@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebTrack</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="popup-logo">
+        <span class="logo-icon">⏱</span>
+        <span class="logo-text">WebTrack</span>
+      </div>
+      <div class="header-status" id="trackingStatus">
+        <span class="status-dot active"></span>
+        <span class="status-text">Tracking</span>
+      </div>
+    </header>
+
+    <!-- Today's Summary -->
+    <section class="today-section">
+      <div class="today-label">Today</div>
+      <div class="today-total" id="todayTotal">0m</div>
+      <div class="today-sublabel">active web time</div>
+    </section>
+
+    <!-- Website Usage List -->
+    <section class="websites-section" id="websitesList">
+      <div class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>Loading usage data...</p>
+      </div>
+    </section>
+
+    <!-- Divider -->
+    <div class="popup-divider"></div>
+
+    <!-- Inactive Tabs -->
+    <section class="inactive-section" id="inactiveSection" style="display: none;">
+      <button class="inactive-btn" id="inactiveBtn">
+        <span class="inactive-icon">🧹</span>
+        <span class="inactive-text" id="inactiveText">0 inactive tabs</span>
+        <span class="inactive-arrow">›</span>
+      </button>
+    </section>
+
+    <!-- Cleanup Review Panel (hidden by default) -->
+    <section class="cleanup-section" id="cleanupSection" style="display: none;">
+    </section>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <button class="footer-btn" id="openDashboard">
+        <span>📊</span>
+        <span>View weekly report</span>
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

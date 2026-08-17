@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebTrack — Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">⏱</span>
+        <span class="logo-text">WebTrack</span>
+      </div>
+
+      <div class="sidebar-nav">
+        <button class="nav-item active" data-tab="today" id="navToday">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Today</span>
+        </button>
+        <button class="nav-item" data-tab="weekly" id="navWeekly">
+          <span class="nav-icon">📈</span>
+          <span class="nav-label">This Week</span>
+        </button>
+        <button class="nav-item" data-tab="hygiene" id="navHygiene">
+          <span class="nav-icon">🧹</span>
+          <span class="nav-label">Tab Hygiene</span>
+        </button>
+        <button class="nav-item" data-tab="settings" id="navSettings">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-label">Settings</span>
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-status" id="sidebarStatus">
+          <span class="status-dot active"></span>
+          <span>Tracking active</span>
+        </div>
+        <div class="sidebar-version">v0.1.0</div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Today Tab -->
+      <section class="tab-panel active" id="panelToday">
+        <div class="panel-header">
+          <h1 class="panel-title">Today's Activity</h1>
+          <div class="panel-date" id="todayDate"></div>
+        </div>
+
+        <div class="stats-row" id="todayStats">
+          <div class="stat-card glow">
+            <div class="stat-value" id="todayTotalTime">0m</div>
+            <div class="stat-label">Active Time</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="todaySiteCount">0</div>
+            <div class="stat-label">Sites Visited</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="todayTabCount">0</div>
+            <div class="stat-label">Open Tabs</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Website Usage</h2>
+          </div>
+          <div class="card-body" id="todayWebsites">
+            <div class="empty-state">
+              <span class="empty-icon">🌐</span>
+              <p>No activity recorded yet today.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Weekly Tab -->
+      <section class="tab-panel" id="panelWeekly">
+        <div class="panel-header">
+          <h1 class="panel-title">Weekly Report</h1>
+          <div class="panel-date" id="weeklyDateRange"></div>
+        </div>
+
+        <div class="stats-row" id="weeklyStats">
+          <div class="stat-card glow">
+            <div class="stat-value" id="weeklyTotalTime">0m</div>
+            <div class="stat-label">Total Active Time</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="weeklyAvgTime">0m</div>
+            <div class="stat-label">Average / Day</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="weeklyChange">—</div>
+            <div class="stat-label">vs Last Week</div>
+          </div>
+        </div>
+
+        <!-- Daily Chart -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Daily Breakdown</h2>
+          </div>
+          <div class="card-body">
+            <div class="daily-chart" id="dailyChart">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Websites -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Top Websites</h2>
+          </div>
+          <div class="card-body" id="weeklyWebsites">
+            <div class="empty-state">
+              <span class="empty-icon">📈</span>
+              <p>No weekly data yet.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insights -->
+        <div class="card" id="insightsCard" style="display: none;">
+          <div class="card-header">
+            <h2 class="card-title">Insights</h2>
+          </div>
+          <div class="card-body" id="weeklyInsights">
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Hygiene Tab -->
+      <section class="tab-panel" id="panelHygiene">
+        <div class="panel-header">
+          <h1 class="panel-title">Tab Hygiene</h1>
+          <div class="panel-date">This Week</div>
+        </div>
+
+        <div class="stats-row" id="hygieneStats">
+          <div class="stat-card">
+            <div class="stat-value" id="hygieneAvgTabs">—</div>
+            <div class="stat-label">Avg Open Tabs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="hygieneClosedTabs">0</div>
+            <div class="stat-label">Tabs Closed via Suggestions</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="hygieneAcceptRate">—</div>
+            <div class="stat-label">Acceptance Rate</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="hygieneLongest">—</div>
+            <div class="stat-label">Longest Inactive Tab</div>
+          </div>
+        </div>
+
+        <!-- Current Inactive Tabs -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Current Inactive Tabs</h2>
+          </div>
+          <div class="card-body" id="hygieneCleanup">
+            <div class="empty-state">
+              <span class="empty-icon">✨</span>
+              <p>All tabs are actively in use!</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings Tab -->
+      <section class="tab-panel" id="panelSettings">
+        <div class="panel-header">
+          <h1 class="panel-title">Settings</h1>
+        </div>
+
+        <!-- Tracking Settings -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Tracking</h2>
+          </div>
+          <div class="card-body settings-body">
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-label">Track active browser time</div>
+                <div class="setting-desc">Monitor which websites you spend time on</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="settingTracking" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-label">Idle detection threshold</div>
+                <div class="setting-desc">Pause tracking after this period of inactivity</div>
+              </div>
+              <select id="settingIdleThreshold" class="setting-select">
+                <option value="60">1 minute</option>
+                <option value="120" selected>2 minutes</option>
+                <option value="180">3 minutes</option>
+                <option value="300">5 minutes</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Cleanup Settings -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Tab Cleanup</h2>
+          </div>
+          <div class="card-body settings-body">
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-label">Suggest cleanup after</div>
+                <div class="setting-desc">How long a tab should be inactive before suggesting cleanup</div>
+              </div>
+              <select id="settingCleanupThreshold" class="setting-select">
+                <option value="5">5 minutes</option>
+                <option value="10" selected>10 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="20">20 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">60 minutes</option>
+                <option value="999999">Never</option>
+              </select>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-label">Ignore pinned tabs</div>
+                <div class="setting-desc">Never suggest closing pinned tabs</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="settingIgnorePinned" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-label">Ignore tabs playing audio</div>
+                <div class="setting-desc">Never suggest closing tabs with active media</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="settingIgnoreAudible" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Protected Domains -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Protected Domains</h2>
+            <p class="card-subtitle">Never suggest closing tabs from these domains</p>
+          </div>
+          <div class="card-body settings-body">
+            <div class="protected-domains" id="protectedDomains">
+              <!-- Rendered by JS -->
+            </div>
+            <div class="add-domain-row">
+              <input type="text" id="newDomainInput" class="setting-input" placeholder="e.g. gmail.com">
+              <button class="btn-add" id="addDomainBtn">Add</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Management -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Data</h2>
+          </div>
+          <div class="card-body settings-body">
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-label">Storage used</div>
+                <div class="setting-desc" id="storageUsed">Calculating...</div>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <div class="setting-label">Clear all data</div>
+                <div class="setting-desc">This will reset all tracking data and settings</div>
+              </div>
+              <button class="btn-danger" id="clearDataBtn">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save Indicator -->
+        <div class="save-indicator" id="saveIndicator">
+          <span>✓ Settings saved</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="dashboard.js" type="module"></script>
+</body>
+</html>
