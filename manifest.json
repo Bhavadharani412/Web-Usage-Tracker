@@ -12,6 +12,13 @@
     "alarms"
   ],
 
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "webtrack@local-dev",
+      "strict_min_version": "115.0"
+    }
+  },
+
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"

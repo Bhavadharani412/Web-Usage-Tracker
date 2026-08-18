@@ -2,6 +2,7 @@
  * Dashboard JS — renders Today, Weekly, Tab Hygiene, and Settings tabs.
  */
 
+import '../utils/browser-adapter.js';
 import { formatDuration, formatDate, formatDateFull, getDateString, getDayName, percentChange } from '../utils/time-format.js';
 import { getCleanupCandidates, closeTabs, keepTabs } from '../cleanup/suggestions.js';
 import { renderCleanupList } from '../cleanup/cleanup-ui.js';
