@@ -3,6 +3,7 @@
  * Also handles first-time onboarding overlay (wt_onboarding_seen flag).
  */
 
+import '../utils/browser-adapter.js';
 import { formatDuration } from '../utils/time-format.js';
 import { getCleanupCandidates, closeTabs, keepTabs } from '../cleanup/suggestions.js';
 import { renderCleanupList } from '../cleanup/cleanup-ui.js';

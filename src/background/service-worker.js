@@ -5,6 +5,7 @@
  * This is registered in manifest.json as the service worker.
  */
 
+import '../utils/browser-adapter.js';
 import * as tabManager from './tab-manager.js';
 import * as idleManager from './idle-manager.js';
 import * as aggregation from './aggregation.js';

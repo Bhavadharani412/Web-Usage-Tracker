@@ -5,6 +5,10 @@
 
 import { DEFAULT_SETTINGS, createDailyUsage, SCHEMA_VERSION } from './schema.js';
 import { getDateString } from '../utils/time-format.js';
+import { getStorageLocal, getStorageSession } from '../utils/browser-adapter.js';
+
+const storageLocal = getStorageLocal();
+const storageSession = getStorageSession();
 
 const KEYS = {
   SETTINGS: 'wt_settings',
@@ -20,8 +24,13 @@ const KEYS = {
  */
 async function get(key) {
   return new Promise((resolve) => {
-    chrome.storage.local.get([key], (result) => {
-      resolve(result[key] || null);
+    if (!storageLocal?.get) {
+      resolve(null);
+      return;
+    }
+
+    storageLocal.get([key], (result) => {
+      resolve(result?.[key] ?? null);
     });
   });
 }
@@ -34,7 +43,12 @@ async function get(key) {
  */
 async function set(key, value) {
   return new Promise((resolve) => {
-    chrome.storage.local.set({ [key]: value }, resolve);
+    if (!storageLocal?.set) {
+      resolve();
+      return;
+    }
+
+    storageLocal.set({ [key]: value }, resolve);
   });
 }
 
@@ -45,8 +59,13 @@ async function set(key, value) {
  */
 async function getMultiple(keys) {
   return new Promise((resolve) => {
-    chrome.storage.local.get(keys, (result) => {
-      resolve(result);
+    if (!storageLocal?.get) {
+      resolve({});
+      return;
+    }
+
+    storageLocal.get(keys, (result) => {
+      resolve(result || {});
     });
   });
 }
@@ -216,17 +235,18 @@ let inactivityWriteQueue = Promise.resolve();
  */
 function enqueueInactivityMutation(mutator) {
   inactivityWriteQueue = inactivityWriteQueue.then(async () => {
-    const result = await chrome.storage.session.get(SESSION_KEY);
+    const sessionStore = getStorageSession();
+    const result = sessionStore?.get ? await new Promise((resolve) => sessionStore.get(SESSION_KEY, resolve)) : {};
 
     const current = {
-      ...(result[SESSION_KEY] || {})
+      ...(result?.[SESSION_KEY] || {})
     };
 
     mutator(current);
 
-    await chrome.storage.session.set({
-      [SESSION_KEY]: current
-    });
+    if (sessionStore?.set) {
+      await new Promise((resolve) => sessionStore.set({ [SESSION_KEY]: current }, resolve));
+    }
   });
 
   return inactivityWriteQueue;
@@ -239,9 +259,15 @@ function enqueueInactivityMutation(mutator) {
  * { [tabId]: timestampMs }
  */
 export async function getTabInactivity() {
-  const result = await chrome.storage.session.get(SESSION_KEY);
+  const sessionStore = getStorageSession();
 
-  return result[SESSION_KEY] || {};
+  if (!sessionStore?.get) {
+    return {};
+  }
+
+  const result = await new Promise((resolve) => sessionStore.get(SESSION_KEY, resolve));
+
+  return result?.[SESSION_KEY] || {};
 }
 
 /**
@@ -288,9 +314,23 @@ export function clearTabsInactive(tabIds) {
  */
 export async function clearAllData() {
   return new Promise((resolve) => {
-    chrome.storage.local.clear(() => {
-      // Also clear session-stored inactivity timestamps
-      chrome.storage.session.remove(SESSION_KEY, resolve);
+    const sessionStore = getStorageSession();
+
+    if (!storageLocal?.clear) {
+      if (sessionStore?.remove) {
+        sessionStore.remove(SESSION_KEY, resolve);
+      } else {
+        resolve();
+      }
+      return;
+    }
+
+    storageLocal.clear(() => {
+      if (sessionStore?.remove) {
+        sessionStore.remove(SESSION_KEY, resolve);
+      } else {
+        resolve();
+      }
     });
   });
 }
@@ -301,8 +341,13 @@ export async function clearAllData() {
  */
 export async function getStorageUsage() {
   return new Promise((resolve) => {
-    chrome.storage.local.getBytesInUse(null, (bytes) => {
-      resolve(bytes);
+    if (!storageLocal?.getBytesInUse) {
+      resolve(0);
+      return;
+    }
+
+    storageLocal.getBytesInUse(null, (bytes) => {
+      resolve(bytes || 0);
     });
   });
 }
