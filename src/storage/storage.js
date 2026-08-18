@@ -195,6 +195,91 @@ export async function updateWeeklyStats(updates) {
   await set(KEYS.WEEKLY_STATS, { ...current, ...updates });
 }
 
+// ─── Tab Inactivity Persistence ────────────────────────────
+// chrome.storage.session survives Manifest V3 service-worker restarts
+// during the current browser session.
+//
+// The queue is important: without it, two simultaneous operations can do:
+//
+// get old data
+// modify separately
+// save separately
+//
+// causing one tab's inactivity data to overwrite another's.
+
+const SESSION_KEY = 'wt_tab_inactivity';
+
+let inactivityWriteQueue = Promise.resolve();
+
+/**
+ * Serialize changes to the inactivity map.
+ */
+function enqueueInactivityMutation(mutator) {
+  inactivityWriteQueue = inactivityWriteQueue.then(async () => {
+    const result = await chrome.storage.session.get(SESSION_KEY);
+
+    const current = {
+      ...(result[SESSION_KEY] || {})
+    };
+
+    mutator(current);
+
+    await chrome.storage.session.set({
+      [SESSION_KEY]: current
+    });
+  });
+
+  return inactivityWriteQueue;
+}
+
+/**
+ * Get all persisted inactivity timestamps.
+ *
+ * @returns {Promise<Object>}
+ * { [tabId]: timestampMs }
+ */
+export async function getTabInactivity() {
+  const result = await chrome.storage.session.get(SESSION_KEY);
+
+  return result[SESSION_KEY] || {};
+}
+
+/**
+ * Mark a tab as inactive.
+ *
+ * @param {number} tabId
+ * @param {number} timestamp
+ */
+export function persistTabInactive(tabId, timestamp) {
+  return enqueueInactivityMutation((current) => {
+    current[String(tabId)] = timestamp;
+  });
+}
+
+/**
+ * Remove a tab's inactivity record.
+ *
+ * @param {number} tabId
+ */
+export function clearTabInactive(tabId) {
+  return enqueueInactivityMutation((current) => {
+    delete current[String(tabId)];
+  });
+}
+
+/**
+ * Remove multiple inactivity records.
+ *
+ * @param {number[]} tabIds
+ */
+export function clearTabsInactive(tabIds) {
+  return enqueueInactivityMutation((current) => {
+    for (const tabId of tabIds) {
+      delete current[String(tabId)];
+    }
+  });
+}
+
 // ─── Data Management ───────────────────────────────────────
 
 /**
@@ -203,7 +288,10 @@ export async function updateWeeklyStats(updates) {
  */
 export async function clearAllData() {
   return new Promise((resolve) => {
-    chrome.storage.local.clear(resolve);
+    chrome.storage.local.clear(() => {
+      // Also clear session-stored inactivity timestamps
+      chrome.storage.session.remove(SESSION_KEY, resolve);
+    });
   });
 }
 

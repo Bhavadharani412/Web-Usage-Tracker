@@ -9,7 +9,7 @@ import * as tabManager from './tab-manager.js';
 import * as idleManager from './idle-manager.js';
 import * as aggregation from './aggregation.js';
 import tracker from './tracker.js';
-import { getSettings, getDailyUsage, getMultipleDailyUsage, updateTodayUsage, saveSettings, recordTabDecision, getDomainDecisionStats, getWeeklyStats } from '../storage/storage.js';
+import { getSettings,getDailyUsage, getMultipleDailyUsage,updateTodayUsage,saveSettings,recordTabDecision,getDomainDecisionStats,getWeeklyStats,persistTabInactive } from '../storage/storage.js';
 import { getDateString, getWeekRange, getPreviousWeekRange, getDateRange } from '../utils/time-format.js';
 import { aggregateWeekly } from './aggregation.js';
 
@@ -46,8 +46,10 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
-  tabManager.onTabCreated(tab);
-  // Update tab count in daily usage
+  tabManager.onTabCreated(tab).catch((error) => {
+    console.error('[WebTrack] Failed to track new tab:', error);
+  });
+
   updateTodayUsage((daily) => {
     daily.tabsOpened = (daily.tabsOpened || 0) + 1;
     return daily;
@@ -183,27 +185,40 @@ async function handleMessage(message) {
     }
 
     case 'KEEP_TABS': {
-      const { tabIds: keepIds } = message;
-      for (const tabId of keepIds) {
-        const instance = tabManager.getAllTrackedTabs().find(t => t.browserTabId === tabId);
-        if (instance) {
-          // Reset inactivity timer
-          instance.inactiveSince = Date.now();
-          await recordTabDecision({
-            domain: instance.domain,
-            action: 'keep',
-            timestamp: Date.now()
-          });
-        }
-      }
+  const { tabIds: keepIds } = message;
 
-      await updateTodayUsage((daily) => {
-        daily.cleanupRejected = (daily.cleanupRejected || 0) + keepIds.length;
-        return daily;
+  for (const tabId of keepIds) {
+    const instance = tabManager
+      .getAllTrackedTabs()
+      .find(t => t.browserTabId === tabId);
+
+    if (instance) {
+      // Reset the inactivity timer.
+      const now = Date.now();
+
+      instance.inactiveSince = now;
+
+      // CRITICAL:
+      // Persist the new timestamp so it survives a service-worker restart.
+      await persistTabInactive(tabId, now);
+
+      await recordTabDecision({
+        domain: instance.domain,
+        action: 'keep',
+        timestamp: now
       });
-
-      return { success: true };
     }
+  }
+
+  await updateTodayUsage((daily) => {
+    daily.cleanupRejected =
+      (daily.cleanupRejected || 0) + keepIds.length;
+
+    return daily;
+  });
+
+  return { success: true };
+}
 
     case 'GET_SETTINGS': {
       const settings = await getSettings();

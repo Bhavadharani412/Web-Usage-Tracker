@@ -428,10 +428,12 @@ function setupSettings() {
     if (e.key === 'Enter') addProtectedDomain();
   });
 
-  // Clear data
+  // Clear data — also resets onboarding flag so the welcome screen appears again
   document.getElementById('clearDataBtn')?.addEventListener('click', async () => {
     if (confirm('Are you sure you want to clear all tracking data? This cannot be undone.')) {
       await chrome.storage.local.clear();
+      // Explicitly remove the onboarding flag (clear() already does this, but be explicit)
+      await chrome.storage.local.remove('wt_onboarding_seen');
       showSaveIndicator('Data cleared');
       await loadSettings();
     }

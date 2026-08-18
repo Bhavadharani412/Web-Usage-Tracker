@@ -1,5 +1,6 @@
 /**
  * Popup JS — loads today's usage data and renders the compact dashboard.
+ * Also handles first-time onboarding overlay (wt_onboarding_seen flag).
  */
 
 import { formatDuration } from '../utils/time-format.js';
@@ -19,6 +20,7 @@ function sendMessage(message) {
 // ─── Init ──────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
+  await initOnboarding();
   await loadTodayUsage();
   await loadInactiveTabs();
   setupEventListeners();
@@ -29,6 +31,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadInactiveTabs();
   }, 30000);
 });
+
+// ─── Onboarding ────────────────────────────────────────────
+
+async function initOnboarding() {
+  const overlay = document.getElementById('onboardingOverlay');
+  if (!overlay) return;
+
+  const result = await chrome.storage.local.get('wt_onboarding_seen');
+  if (!result.wt_onboarding_seen) {
+    overlay.classList.remove('hidden');
+    // Trap focus inside the overlay
+    const gotItBtn = document.getElementById('onboardingGotIt');
+    gotItBtn?.focus();
+  }
+}
+
+function dismissOnboarding() {
+  chrome.storage.local.set({ wt_onboarding_seen: true });
+  const overlay = document.getElementById('onboardingOverlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+  }
+}
 
 // ─── Today's Usage ─────────────────────────────────────────
 
@@ -114,11 +139,11 @@ function renderWebsites(daily) {
     const barWidth = Math.max(2, Math.round((seconds / maxTime) * 100));
 
     return `
-      <div class="website-item" style="animation-delay: ${index * 0.05}s">
-        <span class="website-icon">${icon}</span>
+      <div class="website-item" style="animation-delay: ${index * 0.04}s">
+        <span class="website-icon" aria-hidden="true">${icon}</span>
         <div class="website-info">
           <div class="website-name">${escapeHtml(name)}</div>
-          <div class="website-bar-container">
+          <div class="website-bar-container" role="progressbar" aria-valuenow="${barWidth}" aria-valuemin="0" aria-valuemax="100">
             <div class="website-bar" style="width: ${barWidth}%"></div>
           </div>
         </div>
@@ -130,7 +155,7 @@ function renderWebsites(daily) {
   // If there are more websites, show a count
   if (sorted.length > 8) {
     container.innerHTML += `
-      <div class="website-item" style="justify-content: center; cursor: pointer;" id="showMoreSites">
+      <div class="website-item" style="justify-content: center;" id="showMoreSites">
         <span style="font-size: 12px; color: var(--text-muted);">
           + ${sorted.length - 8} more sites
         </span>
@@ -144,7 +169,7 @@ function showEmptyState() {
   container.innerHTML = `
     <div class="websites-empty">
       <span class="websites-empty-icon">📊</span>
-      <p>Loading usage data...</p>
+      <p>Loading usage data…</p>
     </div>
   `;
 }
@@ -168,6 +193,17 @@ async function loadInactiveTabs() {
 // ─── Event Listeners ───────────────────────────────────────
 
 function setupEventListeners() {
+  // Onboarding "Got it"
+  document.getElementById('onboardingGotIt')?.addEventListener('click', dismissOnboarding);
+
+  // Keyboard: close onboarding with Escape
+  document.addEventListener('keydown', (e) => {
+    const overlay = document.getElementById('onboardingOverlay');
+    if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) {
+      dismissOnboarding();
+    }
+  });
+
   // Open dashboard
   document.getElementById('openDashboard')?.addEventListener('click', () => {
     chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/index.html') });
@@ -175,15 +211,18 @@ function setupEventListeners() {
   });
 
   // Inactive tabs button
-  document.getElementById('inactiveBtn')?.addEventListener('click', async () => {
+  const inactiveBtn = document.getElementById('inactiveBtn');
+  inactiveBtn?.addEventListener('click', async () => {
     const cleanupSection = document.getElementById('cleanupSection');
     const inactiveSection = document.getElementById('inactiveSection');
+    const isOpen = cleanupSection.style.display !== 'none';
 
-    if (cleanupSection.style.display === 'none') {
+    if (!isOpen) {
       // Show cleanup panel
       const candidates = await getCleanupCandidates();
       cleanupSection.style.display = 'block';
       inactiveSection.style.display = 'none';
+      inactiveBtn.setAttribute('aria-expanded', 'true');
 
       renderCleanupList(cleanupSection, candidates, {
         onCloseSelected: async (tabIds) => {
@@ -198,6 +237,7 @@ function setupEventListeners() {
     } else {
       cleanupSection.style.display = 'none';
       inactiveSection.style.display = 'block';
+      inactiveBtn.setAttribute('aria-expanded', 'false');
     }
   });
 }
@@ -205,6 +245,7 @@ function setupEventListeners() {
 async function refreshAfterCleanup() {
   const cleanupSection = document.getElementById('cleanupSection');
   const inactiveSection = document.getElementById('inactiveSection');
+  const inactiveBtn = document.getElementById('inactiveBtn');
 
   // Refresh candidates
   const candidates = await getCleanupCandidates();
@@ -212,6 +253,7 @@ async function refreshAfterCleanup() {
   if (candidates.length === 0) {
     cleanupSection.style.display = 'none';
     inactiveSection.style.display = 'none';
+    inactiveBtn?.setAttribute('aria-expanded', 'false');
   } else {
     renderCleanupList(cleanupSection, candidates, {
       onCloseSelected: async (tabIds) => {
