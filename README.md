@@ -35,6 +35,28 @@ A privacy-first Manifest V3 Chrome extension that tracks your actual active brow
 - Only stores domain/category, not full URLs
 - All data stays in `chrome.storage.local`
 
+---
+
+## Getting Started
+
+### First-time installation
+
+> **On first launch, WebTrack shows a welcome screen** inside the popup. Follow the four steps shown there — it takes under a minute.
+
+| Step | What to do |
+|------|-----------|
+| **1 — Load unpacked** | Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, select the `web-usage-tracker` folder |
+| **2 — Pin WebTrack** | Click the 🧩 puzzle icon in Chrome's toolbar → click the 📌 pin next to WebTrack |
+| **3 — Browse normally** | WebTrack tracks automatically. It pauses when you're idle or switch apps — no configuration needed |
+| **4 — Open the popup** | Click the WebTrack toolbar icon to see today's active web time and your top sites |
+
+> **Privacy note:** WebTrack measures active browsing time. It pauses when you're idle or using another app. Your data stays on your device — no server, no account, no analytics.
+
+After clicking **Got it** in the onboarding screen, the welcome overlay won't appear again.  
+To reset it, go to **Settings → Clear all data** — the onboarding will appear the next time you open the popup.
+
+---
+
 ## Installation (Development)
 
 1. Clone or download this repository
@@ -43,6 +65,8 @@ A privacy-first Manifest V3 Chrome extension that tracks your actual active brow
 4. Click **Load unpacked**
 5. Select the `web-usage-tracker` directory (the one containing `manifest.json`)
 6. Pin the extension for easy access
+
+
 
 ## How to Use
 

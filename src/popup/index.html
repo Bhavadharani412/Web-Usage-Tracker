@@ -7,58 +7,112 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="popup-container">
+
+  <!-- ─── First-Time Onboarding Overlay ──────────────────── -->
+  <div class="onboarding-overlay hidden" id="onboardingOverlay" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+
+    <div class="onboarding-brand">
+      <span class="onboarding-brand-icon" aria-hidden="true">⏱</span>
+      <span class="onboarding-brand-name">WebTrack</span>
+    </div>
+
+    <h1 class="onboarding-title" id="onboardingTitle">Welcome aboard!</h1>
+    <p class="onboarding-subtitle">Get started in four quick steps.</p>
+
+    <ol class="onboarding-steps" aria-label="Setup steps">
+      <li class="onboarding-step">
+        <span class="onboarding-step-num" aria-hidden="true">1</span>
+        <div class="onboarding-step-text">
+          <div class="onboarding-step-label">Load unpacked</div>
+          <div class="onboarding-step-desc">Go to <code>chrome://extensions</code>, enable Developer mode, then click <em>Load unpacked</em> and select the <code>web-usage-tracker</code> folder.</div>
+        </div>
+      </li>
+      <li class="onboarding-step">
+        <span class="onboarding-step-num" aria-hidden="true">2</span>
+        <div class="onboarding-step-text">
+          <div class="onboarding-step-label">Pin WebTrack</div>
+          <div class="onboarding-step-desc">Click the puzzle icon in the Chrome toolbar and pin WebTrack for one-click access.</div>
+        </div>
+      </li>
+      <li class="onboarding-step">
+        <span class="onboarding-step-num" aria-hidden="true">3</span>
+        <div class="onboarding-step-text">
+          <div class="onboarding-step-label">Browse normally</div>
+          <div class="onboarding-step-desc">WebTrack tracks time automatically. It pauses when you're idle or switch to another app — no setup needed.</div>
+        </div>
+      </li>
+      <li class="onboarding-step">
+        <span class="onboarding-step-num" aria-hidden="true">4</span>
+        <div class="onboarding-step-text">
+          <div class="onboarding-step-label">Open the popup</div>
+          <div class="onboarding-step-desc">Click the WebTrack icon to see today's active web time. Hit <em>View weekly report</em> for deeper insights.</div>
+        </div>
+      </li>
+    </ol>
+
+    <div class="onboarding-note">
+      <strong>🔒 Privacy-first.</strong> Your data never leaves your device — no server, no account, no analytics.
+    </div>
+
+    <button class="onboarding-cta" id="onboardingGotIt">Got it</button>
+
+  </div><!-- /onboarding-overlay -->
+
+  <!-- ─── Main Popup Content ──────────────────────────────── -->
+  <div class="popup-container" id="popupContainer">
+
     <!-- Header -->
     <header class="popup-header">
       <div class="popup-logo">
-        <span class="logo-icon">⏱</span>
+        <span class="logo-icon" aria-hidden="true">⏱</span>
         <span class="logo-text">WebTrack</span>
       </div>
-      <div class="header-status" id="trackingStatus">
+      <div class="header-status" id="trackingStatus" aria-live="polite">
         <span class="status-dot active"></span>
         <span class="status-text">Tracking</span>
       </div>
     </header>
 
     <!-- Today's Summary -->
-    <section class="today-section">
+    <section class="today-section" aria-label="Today's active time">
       <div class="today-label">Today</div>
-      <div class="today-total" id="todayTotal">0m</div>
+      <div class="today-total" id="todayTotal" aria-live="polite">0m</div>
       <div class="today-sublabel">active web time</div>
     </section>
 
     <!-- Website Usage List -->
-    <section class="websites-section" id="websitesList">
+    <section class="websites-section" id="websitesList" aria-label="Top websites today">
       <div class="loading-state">
-        <div class="loading-spinner"></div>
-        <p>Loading usage data...</p>
+        <div class="loading-spinner" role="status" aria-label="Loading"></div>
+        <p>Loading usage data…</p>
       </div>
     </section>
 
     <!-- Divider -->
-    <div class="popup-divider"></div>
+    <div class="popup-divider" role="separator"></div>
 
     <!-- Inactive Tabs -->
     <section class="inactive-section" id="inactiveSection" style="display: none;">
-      <button class="inactive-btn" id="inactiveBtn">
-        <span class="inactive-icon">🧹</span>
+      <button class="inactive-btn" id="inactiveBtn" aria-expanded="false">
+        <span class="inactive-icon" aria-hidden="true">🧹</span>
         <span class="inactive-text" id="inactiveText">0 inactive tabs</span>
-        <span class="inactive-arrow">›</span>
+        <span class="inactive-arrow" aria-hidden="true">›</span>
       </button>
     </section>
 
     <!-- Cleanup Review Panel (hidden by default) -->
-    <section class="cleanup-section" id="cleanupSection" style="display: none;">
+    <section class="cleanup-section" id="cleanupSection" style="display: none;" aria-label="Tab cleanup review">
     </section>
 
     <!-- Footer -->
     <footer class="popup-footer">
       <button class="footer-btn" id="openDashboard">
-        <span>📊</span>
+        <span aria-hidden="true">📊</span>
         <span>View weekly report</span>
       </button>
     </footer>
-  </div>
+
+  </div><!-- /popup-container -->
 
   <script src="popup.js" type="module"></script>
 </body>
