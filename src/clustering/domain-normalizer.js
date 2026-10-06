@@ -59,11 +59,14 @@ export function parseUrl(urlStr) {
  * @returns {string} e.g. "Leetcode"
  */
 export function domainToDisplayName(domain) {
-  // Remove TLD
+  if (!domain) return '';
   const name = domain.split('.')[0];
-  // Capitalize first letter
-  return name.charAt(0).toUpperCase() + name.slice(1);
+  return name
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
+
 
 /**
  * Check if a URL is a browser internal page that shouldn't be tracked.

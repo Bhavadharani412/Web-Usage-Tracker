@@ -1,0 +1,18 @@
+{
+  "name": "web-usage-tracker",
+  "version": "0.1.0",
+  "description": "Privacy-first active usage tracking & intelligent tab cleanup extension for Chrome.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/aggregation.test.mjs tests/benchmarks.test.mjs tests/browser-compat.test.mjs tests/classifier.test.mjs tests/tracker.test.mjs tests/week-math.test.mjs"
+  },
+  "keywords": [
+    "chrome-extension",
+    "manifest-v3",
+    "productivity",
+    "tab-cleaner",
+    "time-tracker"
+  ],
+  "author": "",
+  "license": "MIT"
+}

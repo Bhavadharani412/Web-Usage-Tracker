@@ -13,7 +13,7 @@ import { getDailyUsage, saveDailyUsage, updateWeeklyStats } from '../storage/sto
 import { getDateString } from '../utils/time-format.js';
 
 const ALARM_PERIODIC = 'wt_periodic_aggregation';
-const ALARM_DAILY_RESET = 'wt_daily_reset';
+const ALARM_HOURLY_MAINTENANCE = 'wt_hourly_maintenance';
 const DATA_RETENTION_DAYS = 90;
 
 /**
@@ -25,8 +25,8 @@ export async function init() {
     periodInMinutes: 5
   });
 
-  // Daily reset check every hour
-  chrome.alarms.create(ALARM_DAILY_RESET, {
+  // Hourly maintenance check (data retention & cleanup)
+  chrome.alarms.create(ALARM_HOURLY_MAINTENANCE, {
     periodInMinutes: 60
   });
 }
@@ -38,10 +38,11 @@ export async function init() {
 export async function onAlarm(alarm) {
   if (alarm.name === ALARM_PERIODIC) {
     await periodicFlush();
-  } else if (alarm.name === ALARM_DAILY_RESET) {
+  } else if (alarm.name === ALARM_HOURLY_MAINTENANCE) {
     await checkDayRollover();
   }
 }
+
 
 /**
  * Periodic flush — save any in-progress tracking time.

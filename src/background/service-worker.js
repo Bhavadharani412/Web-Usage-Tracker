@@ -26,19 +26,30 @@ chrome.runtime.onStartup.addListener(async () => {
   await initialize();
 });
 
+let initPromise = null;
+
 async function initialize() {
-  try {
-    await tabManager.init();
-    await idleManager.init();
-    await aggregation.init();
-    console.log('[WebTrack] Initialized successfully');
-  } catch (e) {
-    console.error('[WebTrack] Initialization error:', e);
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        await tracker.init();
+        await tabManager.init();
+        await idleManager.init();
+        await aggregation.init();
+        console.log('[WebTrack] Initialized successfully');
+      } catch (e) {
+        console.error('[WebTrack] Initialization error:', e);
+        initPromise = null; // allow retry on subsequent failure
+        throw e;
+      }
+    })();
   }
+  return initPromise;
 }
 
 // Self-init in case service worker restarts
 initialize();
+
 
 // ─── Tab Events ────────────────────────────────────────────
 

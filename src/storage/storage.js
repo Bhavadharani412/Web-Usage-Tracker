@@ -131,6 +131,20 @@ export async function updateTodayUsage(updateFn) {
 }
 
 /**
+ * Update daily usage for a specific date with incremental changes.
+ * @param {string} dateStr
+ * @param {Function} updateFn - Receives current data, should return updated data
+ * @returns {Promise<Object>} Updated daily usage
+ */
+export async function updateDailyUsage(dateStr, updateFn) {
+  const current = await getDailyUsage(dateStr);
+  const updated = updateFn(current);
+  await saveDailyUsage(dateStr, updated);
+  return updated;
+}
+
+
+/**
  * Get daily usage for a range of dates.
  * @param {string[]} dates - Array of date strings
  * @returns {Promise<Object[]>}
@@ -351,3 +365,51 @@ export async function getStorageUsage() {
     });
   });
 }
+
+// ─── Active Session Checkpointing ─────────────────────────
+
+const ACTIVE_SESSION_KEY = 'wt_active_session';
+
+/**
+ * Get checkpointed active session state from session storage.
+ * @returns {Promise<Object|null>}
+ */
+export async function getActiveSessionCheckpoint() {
+  const sessionStore = getStorageSession();
+  if (!sessionStore?.get) return null;
+  return new Promise((resolve) => {
+    sessionStore.get(ACTIVE_SESSION_KEY, (result) => {
+      resolve(result?.[ACTIVE_SESSION_KEY] ?? null);
+    });
+  });
+}
+
+/**
+ * Persist active session checkpoint to session storage.
+ * @param {Object} checkpoint - { state, currentSession, pausedAt }
+ * @returns {Promise<void>}
+ */
+export async function persistActiveSessionCheckpoint(checkpoint) {
+  const sessionStore = getStorageSession();
+  if (!sessionStore?.set) return;
+  return new Promise((resolve) => {
+    sessionStore.set({ [ACTIVE_SESSION_KEY]: checkpoint }, resolve);
+  });
+}
+
+/**
+ * Clear checkpointed active session from session storage.
+ * @returns {Promise<void>}
+ */
+export async function clearActiveSessionCheckpoint() {
+  const sessionStore = getStorageSession();
+  if (!sessionStore?.remove && !sessionStore?.set) return;
+  return new Promise((resolve) => {
+    if (sessionStore.remove) {
+      sessionStore.remove(ACTIVE_SESSION_KEY, resolve);
+    } else {
+      sessionStore.set({ [ACTIVE_SESSION_KEY]: null }, resolve);
+    }
+  });
+}
+

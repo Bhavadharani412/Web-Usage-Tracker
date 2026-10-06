@@ -147,3 +147,55 @@ export function percentChange(current, previous) {
   if (!previous) return null;
   return Math.round(((current - previous) / previous) * 100);
 }
+
+/**
+ * Split a continuous time segment [startTime, endTime] (ms) across calendar days (local time).
+ * @param {number} startTime - Start timestamp in ms
+ * @param {number} endTime - End timestamp in ms
+ * @returns {Record<string, number>} Object mapping date string ("YYYY-MM-DD") to seconds in that date
+ */
+export function splitSegmentByDay(startTime, endTime) {
+  const splits = {};
+  if (!startTime || !endTime || endTime <= startTime) return splits;
+
+  let currentStart = startTime;
+
+  while (currentStart < endTime) {
+    const d = new Date(currentStart);
+    // Next midnight at start of next day (00:00:00.000)
+    const nextMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0).getTime();
+
+    const segmentEnd = Math.min(endTime, nextMidnight);
+    const seconds = Math.floor((segmentEnd - currentStart) / 1000);
+    const dateStr = getDateString(d);
+
+    if (seconds >= 1) {
+      splits[dateStr] = (splits[dateStr] || 0) + seconds;
+    }
+
+    currentStart = segmentEnd;
+  }
+
+  return splits;
+}
+
+/**
+ * Split multiple active segments [{start, end}, ...] across calendar days.
+ * @param {Array<{start: number, end: number}>} segments
+ * @returns {Record<string, number>} Object mapping date string ("YYYY-MM-DD") to total seconds
+ */
+export function splitSessionSegmentsByDay(segments) {
+  const result = {};
+  if (!Array.isArray(segments)) return result;
+
+  for (const seg of segments) {
+    if (!seg || !seg.start || !seg.end) continue;
+    const daySplits = splitSegmentByDay(seg.start, seg.end);
+    for (const [dateStr, seconds] of Object.entries(daySplits)) {
+      result[dateStr] = (result[dateStr] || 0) + seconds;
+    }
+  }
+
+  return result;
+}
+

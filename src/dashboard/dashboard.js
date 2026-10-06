@@ -165,16 +165,30 @@ async function loadWeeklyTab() {
   const avgSeconds = daysWithData > 0 ? Math.round(current.totalActiveSeconds / daysWithData) : 0;
   document.getElementById('weeklyAvgTime').textContent = formatDuration(avgSeconds) + '/day';
 
-  const change = percentChange(current.totalActiveSeconds, previous.totalActiveSeconds);
+  // Like-for-like comparison: compare elapsed days of current week against same days of previous week
+  const todayStr = getDateString();
+  const elapsedDays = current.dailyBreakdown.filter(d => d.date <= todayStr);
+  const elapsedCount = Math.max(1, elapsedDays.length);
+
+  const currentElapsedSeconds = elapsedDays.reduce((acc, d) => acc + (d.totalSeconds || 0), 0);
+  const previousSameDaysSeconds = previous.dailyBreakdown
+    .slice(0, elapsedCount)
+    .reduce((acc, d) => acc + (d.totalSeconds || 0), 0);
+
+  const change = percentChange(currentElapsedSeconds, previousSameDaysSeconds);
   const changeEl = document.getElementById('weeklyChange');
   if (change !== null) {
     const sign = change >= 0 ? '+' : '';
     changeEl.textContent = `${sign}${change}%`;
     changeEl.style.color = change >= 0 ? 'var(--green)' : 'var(--red)';
+    if (elapsedCount < 7) {
+      changeEl.title = `Comparing first ${elapsedCount} ${elapsedCount === 1 ? 'day' : 'days'} of current week vs same ${elapsedCount} ${elapsedCount === 1 ? 'day' : 'days'} of previous week`;
+    }
   } else {
     changeEl.textContent = '—';
     changeEl.style.color = 'var(--text-muted)';
   }
+
 
   // Daily chart
   renderDailyChart(current.dailyBreakdown);
