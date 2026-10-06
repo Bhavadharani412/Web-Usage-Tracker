@@ -251,10 +251,11 @@ export function matchPageType(pathname, pageTypes) {
   if (!pageTypes || !pathname) return 'Other';
 
   for (const [pattern, name] of Object.entries(pageTypes)) {
-    if (pathname.startsWith(pattern)) {
+    if (pathname.startsWith(pattern) || pathname.includes(pattern)) {
       return name;
     }
   }
 
   return 'Other';
 }
+

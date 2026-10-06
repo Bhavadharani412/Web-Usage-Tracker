@@ -5,11 +5,12 @@
  *
  * Uses event timestamps (not running timers) to calculate duration.
  * Sessions are flush-on-end: active time is computed and stored
- * when a session ends rather than ticking every second.
+ * when a session ends. Active session state is checkpointed to storage
+ * on every state change to survive service worker suspension.
  */
 
-import { getDateString } from '../utils/time-format.js';
-import { updateTodayUsage } from '../storage/storage.js';
+import { getDateString, splitSessionSegmentsByDay, splitSegmentByDay } from '../utils/time-format.js';
+import { updateDailyUsage, getActiveSessionCheckpoint, persistActiveSessionCheckpoint, clearActiveSessionCheckpoint } from '../storage/storage.js';
 
 /** @enum {string} */
 export const TrackingState = {
@@ -17,6 +18,12 @@ export const TrackingState = {
   TRACKING: 'TRACKING',
   PAUSED: 'PAUSED'
 };
+
+/**
+ * @typedef {Object} SessionSegment
+ * @property {number} start - Timestamp in ms
+ * @property {number} end - Timestamp in ms
+ */
 
 /**
  * @typedef {Object} Session
@@ -29,6 +36,7 @@ export const TrackingState = {
  * @property {number} startTime - Timestamp when tracking started
  * @property {number} accumulatedSeconds - Seconds accumulated in this session
  * @property {string} startDate - Date string when session started
+ * @property {SessionSegment[]} segments - Continuous active intervals
  */
 
 class Tracker {
@@ -41,6 +49,54 @@ class Tracker {
 
     /** @type {number|null} - Timestamp when tracking was last paused */
     this.pausedAt = null;
+
+    /** @type {boolean} */
+    this.isInitialized = false;
+  }
+
+  /**
+   * Initialize tracker — restore active session checkpoint if service worker was suspended.
+   */
+  async init() {
+    if (this.isInitialized) return;
+    try {
+      const checkpoint = await getActiveSessionCheckpoint();
+      if (checkpoint && checkpoint.currentSession && checkpoint.state) {
+        this.currentSession = checkpoint.currentSession;
+        this.state = checkpoint.state;
+        this.pausedAt = checkpoint.pausedAt || null;
+
+        // Verify if the tab is still open/valid
+        let isTabLive = false;
+        if (typeof chrome !== 'undefined' && chrome.tabs?.get && this.currentSession.tabId) {
+          try {
+            const tab = await new Promise((resolve) => {
+              chrome.tabs.get(this.currentSession.tabId, (t) => {
+                if (chrome.runtime?.lastError) resolve(null);
+                else resolve(t);
+              });
+            });
+            if (tab) {
+              isTabLive = true;
+            }
+          } catch {
+            isTabLive = false;
+          }
+        } else {
+          isTabLive = true;
+        }
+
+        if (!isTabLive) {
+          // Tab closed during worker suspension -> end session cleanly
+          await this.endSession();
+        } else {
+          console.log('[WebTrack] Active session restored from checkpoint for tab:', this.currentSession.tabId);
+        }
+      }
+      this.isInitialized = true;
+    } catch (e) {
+      console.error('[WebTrack] Failed to restore active session checkpoint:', e);
+    }
   }
 
   /**
@@ -48,10 +104,10 @@ class Tracker {
    * @param {number} tabId
    * @param {Object} classification - From classifier.classify()
    */
-  startSession(tabId, classification) {
+  async startSession(tabId, classification) {
     // End any existing session first
     if (this.currentSession) {
-      this.endSession();
+      await this.endSession();
     }
 
     const now = Date.now();
@@ -64,30 +120,44 @@ class Tracker {
       domain: classification.domain,
       startTime: now,
       accumulatedSeconds: 0,
-      startDate: getDateString()
+      startDate: getDateString(),
+      segments: []
     };
 
     this.state = TrackingState.TRACKING;
     this.pausedAt = null;
+
+    await this._persistCheckpoint();
   }
 
   /**
-   * End the current session and flush accumulated time to storage.
+   * End the current session and flush accumulated time to storage (splitting across midnight if needed).
    * @returns {Promise<number>} Seconds tracked in this session
    */
   async endSession() {
     if (!this.currentSession) return 0;
 
-    // Calculate final active time
-    const activeSeconds = this._calculateActiveTime();
     const session = this.currentSession;
+    const activeSeconds = this._calculateActiveTime();
 
-    // Reset state
+    // Gather all active segments
+    const allSegments = [...(session.segments || [])];
+    if (this.state === TrackingState.TRACKING && session.startTime) {
+      const now = Date.now();
+      if (now > session.startTime) {
+        allSegments.push({ start: session.startTime, end: now });
+      }
+    }
+    session.allSegments = allSegments;
+
+    // Reset state & clear session storage checkpoint
     this.currentSession = null;
     this.state = TrackingState.INACTIVE;
     this.pausedAt = null;
 
-    // Flush to storage if there was meaningful time
+    await clearActiveSessionCheckpoint();
+
+    // Flush to storage if there was meaningful active time
     if (activeSeconds >= 1 && session.categoryId && session.categoryId !== 'browser' && session.categoryId !== 'unknown') {
       await this._flushToStorage(session, activeSeconds);
     }
@@ -98,34 +168,40 @@ class Tracker {
   /**
    * Pause tracking (e.g., user idle, window lost focus).
    */
-  pause() {
+  async pause() {
     if (this.state !== TrackingState.TRACKING || !this.currentSession) return;
 
     const now = Date.now();
-
-    // Accumulate time up to pause point
-    const elapsed = Math.floor((now - this.currentSession.startTime) / 1000);
+    const elapsed = Math.max(0, Math.floor((now - this.currentSession.startTime) / 1000));
     this.currentSession.accumulatedSeconds += elapsed;
+
+    if (!this.currentSession.segments) {
+      this.currentSession.segments = [];
+    }
+    this.currentSession.segments.push({ start: this.currentSession.startTime, end: now });
 
     this.pausedAt = now;
     this.state = TrackingState.PAUSED;
+
+    await this._persistCheckpoint();
   }
 
   /**
    * Resume tracking after pause.
    */
-  resume() {
+  async resume() {
     if (this.state !== TrackingState.PAUSED || !this.currentSession) return;
 
-    // Reset start time to now (we already accumulated pre-pause time)
     this.currentSession.startTime = Date.now();
     this.state = TrackingState.TRACKING;
     this.pausedAt = null;
+
+    await this._persistCheckpoint();
   }
 
   /**
    * Get the current tracking state info.
-   * @returns {{ state: TrackingState, tabId: number|null, activeSeconds: number, category: string|null }}
+   * @returns {{ state: TrackingState, tabId: number|null, activeSeconds: number, category: string|null, categoryId: string|null, icon: string|null }}
    */
   getStatus() {
     return {
@@ -146,11 +222,10 @@ class Tracker {
   _calculateActiveTime() {
     if (!this.currentSession) return 0;
 
-    let total = this.currentSession.accumulatedSeconds;
+    let total = this.currentSession.accumulatedSeconds || 0;
 
-    // If currently tracking (not paused), add elapsed time since last start
-    if (this.state === TrackingState.TRACKING) {
-      const elapsed = Math.floor((Date.now() - this.currentSession.startTime) / 1000);
+    if (this.state === TrackingState.TRACKING && this.currentSession.startTime) {
+      const elapsed = Math.max(0, Math.floor((Date.now() - this.currentSession.startTime) / 1000));
       total += elapsed;
     }
 
@@ -158,40 +233,63 @@ class Tracker {
   }
 
   /**
-   * Flush session time to daily storage.
-   * @param {Session} session
-   * @param {number} activeSeconds
+   * Persist state machine checkpoint.
    * @private
    */
-  async _flushToStorage(session, activeSeconds) {
-    const today = getDateString();
+  async _persistCheckpoint() {
+    if (this.state === TrackingState.INACTIVE || !this.currentSession) {
+      await clearActiveSessionCheckpoint();
+    } else {
+      await persistActiveSessionCheckpoint({
+        state: this.state,
+        currentSession: this.currentSession,
+        pausedAt: this.pausedAt
+      });
+    }
+  }
 
-    // If the session started on a different day, split time
-    // For simplicity in MVP, assign all time to today
-    await updateTodayUsage((daily) => {
-      daily.totalActiveSeconds += activeSeconds;
+  /**
+   * Flush session time to storage, splitting time correctly per calendar day.
+   * @param {Session & { allSegments?: SessionSegment[] }} session
+   * @param {number} fallbackTotalSeconds
+   * @private
+   */
+  async _flushToStorage(session, fallbackTotalSeconds = 0) {
+    let daySplits = splitSessionSegmentsByDay(session.allSegments || []);
 
-      // Add to website total
-      if (!daily.websites[session.categoryId]) {
-        daily.websites[session.categoryId] = 0;
-      }
-      daily.websites[session.categoryId] += activeSeconds;
+    // Fallback if no segments present
+    if (Object.keys(daySplits).length === 0 && fallbackTotalSeconds >= 1) {
+      const startMs = session.startTime || Date.now();
+      const endMs = startMs + (fallbackTotalSeconds * 1000);
+      daySplits = splitSegmentByDay(startMs, endMs);
+    }
 
-      // Store display name and icon
-      daily.websiteNames[session.categoryId] = session.category;
-      daily.websiteIcons[session.categoryId] = session.icon;
+    // Flush allocated seconds to each corresponding day
+    for (const [dateStr, activeSeconds] of Object.entries(daySplits)) {
+      if (activeSeconds < 1) continue;
 
-      // Add to page type breakdown
-      if (!daily.pageTypes[session.categoryId]) {
-        daily.pageTypes[session.categoryId] = {};
-      }
-      if (!daily.pageTypes[session.categoryId][session.pageType]) {
-        daily.pageTypes[session.categoryId][session.pageType] = 0;
-      }
-      daily.pageTypes[session.categoryId][session.pageType] += activeSeconds;
+      await updateDailyUsage(dateStr, (daily) => {
+        daily.totalActiveSeconds += activeSeconds;
 
-      return daily;
-    });
+        if (!daily.websites[session.categoryId]) {
+          daily.websites[session.categoryId] = 0;
+        }
+        daily.websites[session.categoryId] += activeSeconds;
+
+        daily.websiteNames[session.categoryId] = session.category;
+        daily.websiteIcons[session.categoryId] = session.icon;
+
+        if (!daily.pageTypes[session.categoryId]) {
+          daily.pageTypes[session.categoryId] = {};
+        }
+        if (!daily.pageTypes[session.categoryId][session.pageType]) {
+          daily.pageTypes[session.categoryId][session.pageType] = 0;
+        }
+        daily.pageTypes[session.categoryId][session.pageType] += activeSeconds;
+
+        return daily;
+      });
+    }
   }
 }
 
