@@ -93,3 +93,67 @@ test('Benchmark 2 — Service Worker Forced Suspension Benchmark', async () => {
 
   await tracker.endSession();
 });
+
+test('Benchmark 3 — Diagnostics Instrumentation Overhead & Buffer Capacity Benchmark', async () => {
+  mockEnv.reset();
+  const { default: diagnostics, MAX_BUFFER_SIZE } = await import('../src/utils/diagnostics.js');
+  await diagnostics.clearDiagnostics();
+
+  const WORKLOAD_COUNT = 1000;
+
+  // 1. Measure baseline loop overhead (uninstrumented state transition computation)
+  const baselineStart = performance.now();
+  for (let i = 0; i < WORKLOAD_COUNT; i++) {
+    const ts = Date.now();
+    const duration = Math.max(0, ts - (ts - 100));
+  }
+  const baselineEnd = performance.now();
+  const baselineTotalMs = baselineEnd - baselineStart;
+
+  // 2. Measure instrumented workload (1,000 diagnostic events with latency recording and rolling buffer eviction)
+  const instrumentedStart = performance.now();
+  for (let i = 0; i < WORKLOAD_COUNT; i++) {
+    const writeDuration = 1.0 + (i % 10) * 0.25; // 1.0ms - 3.25ms realistic storage latency distribution
+    diagnostics.recordStorageWrite(writeDuration, true);
+    diagnostics.recordEvent({
+      type: 'workload_event',
+      outcome: 'info',
+      durationMs: writeDuration,
+      details: `Workload iteration ${i}`
+    });
+  }
+  const instrumentedEnd = performance.now();
+  const instrumentedTotalMs = instrumentedEnd - instrumentedStart;
+
+  const totalOverheadMs = Math.max(0, instrumentedTotalMs - baselineTotalMs);
+  const overheadPerEventUs = ((totalOverheadMs / WORKLOAD_COUNT) * 1000); // in microseconds
+  const overheadPerEventMs = totalOverheadMs / WORKLOAD_COUNT;
+
+  const metrics = diagnostics.getHealthMetrics();
+
+  console.log(`\n--- Diagnostics Instrumentation Benchmark ---`);
+  console.log(`Events Processed       : ${WORKLOAD_COUNT}`);
+  console.log(`Baseline Duration      : ${baselineTotalMs.toFixed(3)} ms`);
+  console.log(`Instrumented Duration  : ${instrumentedTotalMs.toFixed(3)} ms`);
+  console.log(`Total Overhead         : ${totalOverheadMs.toFixed(3)} ms`);
+  console.log(`Overhead Per Event     : ${overheadPerEventUs.toFixed(2)} µs (${overheadPerEventMs.toFixed(4)} ms)`);
+  console.log(`Buffer Retained / Cap  : ${metrics.buffer.retainedEvents} / ${metrics.buffer.capacity}`);
+  console.log(`Storage Latency p50    : ${metrics.latency.p50} ms`);
+  console.log(`Storage Latency p95    : ${metrics.latency.p95} ms`);
+  console.log(`---------------------------------------------\n`);
+
+  // Assertions
+  assert.equal(diagnostics.buffer.length, MAX_BUFFER_SIZE, 'Buffer must never exceed 100 entries');
+  assert.equal(metrics.buffer.retainedEvents, 100, 'Retained events must be capped at 100');
+  assert.ok(metrics.latency.hasData, 'Latency data must be present');
+  assert.ok(metrics.latency.p50 > 0, 'p50 latency must be positive');
+  assert.ok(metrics.latency.p95 >= metrics.latency.p50, 'p95 latency must be >= p50 latency');
+
+  // Verify privacy: verify no event in buffer contains URLs or domains
+  for (const event of diagnostics.buffer) {
+    assert.equal(typeof event.details, 'string');
+    assert.equal(event.details.includes('http://'), false);
+    assert.equal(event.details.includes('https://'), false);
+  }
+});
+
