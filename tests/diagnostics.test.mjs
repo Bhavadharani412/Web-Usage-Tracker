@@ -200,3 +200,34 @@ test('Diagnostics — Clear diagnostic history resets state cleanly', async () =
   assert.equal(mgr.buffer.length, 1);
   assert.equal(mgr.buffer[0].type, 'diagnostics_cleared');
 });
+
+test('Diagnostics — Storage layer writes record write latency and error metrics', async () => {
+  mockEnv.reset();
+  const { default: defaultDiag } = await import('../src/utils/diagnostics.js');
+  const { saveDailyUsage } = await import('../src/storage/storage.js');
+
+  await defaultDiag.clearDiagnostics();
+
+  // Perform a storage write
+  await saveDailyUsage('2026-10-26', { date: '2026-10-26', totalActiveSeconds: 120 });
+
+  let metrics = defaultDiag.getHealthMetrics();
+  assert.equal(metrics.latency.hasData, true);
+  assert.ok(metrics.latency.sampleCount >= 1);
+  assert.ok(metrics.latency.p50 >= 0);
+  assert.ok(metrics.latency.p95 >= 0);
+
+  // Simulate chrome.runtime.lastError on storage write
+  globalThis.chrome.runtime.lastError = { message: 'QUOTA_BYTES_PER_ITEM quota exceeded' };
+  await saveDailyUsage('2026-10-27', { date: '2026-10-27', totalActiveSeconds: 50 });
+  globalThis.chrome.runtime.lastError = null;
+
+  metrics = defaultDiag.getHealthMetrics();
+  assert.ok(metrics.runtimeErrors.count >= 1);
+
+  const recent = defaultDiag.getRecentEvents(5);
+  const errorEvent = recent.find(e => e.type === 'storage_write_error');
+  assert.ok(errorEvent);
+  assert.equal(errorEvent.outcome, 'failure');
+});
+

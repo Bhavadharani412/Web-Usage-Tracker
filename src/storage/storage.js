@@ -5,7 +5,8 @@
 
 import { DEFAULT_SETTINGS, createDailyUsage, SCHEMA_VERSION } from './schema.js';
 import { getDateString } from '../utils/time-format.js';
-import { getStorageLocal, getStorageSession } from '../utils/browser-adapter.js';
+import { getStorageLocal, getStorageSession, getBrowserAPI } from '../utils/browser-adapter.js';
+import diagnostics, { DIAGNOSTICS_STORAGE_KEY } from '../utils/diagnostics.js';
 
 const storageLocal = getStorageLocal();
 const storageSession = getStorageSession();
@@ -48,7 +49,24 @@ async function set(key, value) {
       return;
     }
 
-    storageLocal.set({ [key]: value }, resolve);
+    const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    storageLocal.set({ [key]: value }, () => {
+      const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime;
+      const api = getBrowserAPI();
+      const lastError = api?.runtime?.lastError || (typeof chrome !== 'undefined' ? chrome.runtime?.lastError : null);
+
+      if (key !== DIAGNOSTICS_STORAGE_KEY) {
+        if (lastError) {
+          diagnostics.recordStorageWrite(durationMs, false, lastError.message || 'STORAGE_SET_ERROR');
+          diagnostics.recordRuntimeError('STORAGE_ERROR', lastError.message || 'Failed writing to chrome.storage.local', `storage-set-${key}`);
+        } else {
+          diagnostics.recordStorageWrite(durationMs, true);
+        }
+      }
+
+      resolve();
+    });
   });
 }
 
@@ -329,21 +347,34 @@ export function clearTabsInactive(tabIds) {
 export async function clearAllData() {
   return new Promise((resolve) => {
     const sessionStore = getStorageSession();
+    const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    const finish = () => {
+      const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime;
+      const api = getBrowserAPI();
+      const lastError = api?.runtime?.lastError || (typeof chrome !== 'undefined' ? chrome.runtime?.lastError : null);
+      if (lastError) {
+        diagnostics.recordStorageWrite(durationMs, false, lastError.message || 'STORAGE_CLEAR_ERROR');
+      } else {
+        diagnostics.recordStorageWrite(durationMs, true);
+      }
+      resolve();
+    };
 
     if (!storageLocal?.clear) {
       if (sessionStore?.remove) {
-        sessionStore.remove(SESSION_KEY, resolve);
+        sessionStore.remove(SESSION_KEY, finish);
       } else {
-        resolve();
+        finish();
       }
       return;
     }
 
     storageLocal.clear(() => {
       if (sessionStore?.remove) {
-        sessionStore.remove(SESSION_KEY, resolve);
+        sessionStore.remove(SESSION_KEY, finish);
       } else {
-        resolve();
+        finish();
       }
     });
   });

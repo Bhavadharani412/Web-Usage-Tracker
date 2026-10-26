@@ -99,6 +99,7 @@ export function setupChromeMock() {
     reset: () => {
       localStorage.clear();
       sessionStorage.clear();
+      chromeMock.runtime.lastError = null;
     }
   };
 }
