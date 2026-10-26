@@ -972,3 +972,44 @@ body {
 
   .panel-title { font-size: 22px; }
 }
+
+/* ─── Diagnostics Styling ───────────────────────────────── */
+.diag-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.diag-badge.badge-success {
+  background: var(--green-soft);
+  color: var(--olive);
+}
+
+.diag-badge.badge-failure {
+  background: var(--red-soft);
+  color: var(--cherry);
+}
+
+.diag-badge.badge-info {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-secondary);
+}
+
+.diag-event-row {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s ease;
+}
+
+.diag-event-row:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.diag-event-cell {
+  padding: 10px 8px;
+  vertical-align: middle;
+}
+

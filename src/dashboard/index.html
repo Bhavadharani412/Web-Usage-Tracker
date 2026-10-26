@@ -32,6 +32,10 @@
           <span class="nav-icon">⚙️</span>
           <span class="nav-label">Settings</span>
         </button>
+        <button class="nav-item" data-tab="diagnostics" id="navDiagnostics">
+          <span class="nav-icon">🩺</span>
+          <span class="nav-label">Diagnostics</span>
+        </button>
       </div>
 
       <div class="sidebar-footer">
@@ -303,6 +307,74 @@
         <!-- Save Indicator -->
         <div class="save-indicator" id="saveIndicator">
           <span>✓ Settings saved</span>
+        </div>
+      </section>
+
+      <!-- Diagnostics Tab -->
+      <section class="tab-panel" id="panelDiagnostics">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h1 class="panel-title">Extension Health & Diagnostics</h1>
+            <div class="panel-date" id="diagLastUpdated">Local Extension Reliability Metrics</div>
+          </div>
+          <button class="btn-danger" id="clearDiagnosticsBtn" style="padding: 7px 14px; font-size: 13px;">Clear diagnostic history</button>
+        </div>
+
+        <div class="stats-row" id="diagStats">
+          <div class="stat-card">
+            <div class="stat-value" id="diagRecoveryRate">—</div>
+            <div class="stat-label">SW Recovery Rate</div>
+            <div class="stat-sublabel" id="diagRecoveryCount" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">0 / 0 attempts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="diagLatencyP50">—</div>
+            <div class="stat-label">Storage Latency (p50)</div>
+            <div class="stat-sublabel" id="diagLatencyP95" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">p95: —</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="diagRuntimeErrors">0</div>
+            <div class="stat-label">Runtime Errors</div>
+            <div class="stat-sublabel" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">chrome.runtime errors</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="diagBufferStatus">0 / 100</div>
+            <div class="stat-label">Diagnostic Buffer</div>
+            <div class="stat-sublabel" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Rolling memory cap</div>
+          </div>
+        </div>
+
+        <!-- Recent Diagnostic Events -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Recent Diagnostic Events</h2>
+            <p class="card-subtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+              Local operational events only. Zero browsing URLs or page content.
+            </p>
+          </div>
+          <div class="card-body" id="diagEventsBody">
+            <div class="empty-state" id="diagEmptyState">
+              <span class="empty-icon">✨</span>
+              <p>No diagnostic events recorded yet.</p>
+              <p style="margin-top: 6px; font-size: 12px; color: var(--text-muted);">
+                System operational events will appear here.
+              </p>
+            </div>
+            <div class="diag-events-table-wrapper" id="diagTableWrapper" style="display: none; overflow-x: auto;">
+              <table class="diag-events-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                  <tr style="text-align: left; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted);">
+                    <th style="padding: 10px 8px;">Time</th>
+                    <th style="padding: 10px 8px;">Type</th>
+                    <th style="padding: 10px 8px;">Outcome</th>
+                    <th style="padding: 10px 8px;">Details</th>
+                  </tr>
+                </thead>
+                <tbody id="diagEventsList">
+                  <!-- Rendered by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
     </main>

@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
   await loadTodayTab();
   setupSettings();
+  setupDiagnostics();
 });
 
 // ─── Navigation ────────────────────────────────────────────
@@ -66,6 +67,9 @@ function setupNavigation() {
           break;
         case 'settings':
           await loadSettings();
+          break;
+        case 'diagnostics':
+          await loadDiagnosticsTab();
           break;
       }
     });
@@ -548,3 +552,145 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+// ─── Diagnostics Tab ───────────────────────────────────────
+
+async function loadDiagnosticsTab() {
+  try {
+    const response = await sendMessage({ type: 'GET_DIAGNOSTICS' });
+    if (!response?.success || !response.data) {
+      renderDiagnosticsFallback();
+      return;
+    }
+
+    const { metrics, events } = response.data;
+    renderDiagnosticsMetrics(metrics);
+    renderDiagnosticsEvents(events);
+  } catch (err) {
+    console.warn('[WebTrack] Failed to load diagnostics:', err);
+    renderDiagnosticsFallback();
+  }
+}
+
+function renderDiagnosticsMetrics(metrics) {
+  if (!metrics) {
+    renderDiagnosticsFallback();
+    return;
+  }
+
+  // Recovery Rate
+  const recEl = document.getElementById('diagRecoveryRate');
+  const recCountEl = document.getElementById('diagRecoveryCount');
+  if (metrics.recovery?.hasData && metrics.recovery.rate !== null) {
+    recEl.textContent = `${metrics.recovery.rate}%`;
+    recCountEl.textContent = `${metrics.recovery.successful} / ${metrics.recovery.total} attempts`;
+    recEl.style.color = metrics.recovery.rate >= 90 ? 'var(--green)' : 'var(--red)';
+  } else {
+    recEl.textContent = '—';
+    recCountEl.textContent = 'No attempts recorded';
+    recEl.style.color = 'var(--text-muted)';
+  }
+
+  // Latency
+  const p50El = document.getElementById('diagLatencyP50');
+  const p95El = document.getElementById('diagLatencyP95');
+  if (metrics.latency?.hasData && metrics.latency.p50 !== null) {
+    p50El.textContent = `${metrics.latency.p50} ms`;
+    p95El.textContent = `p95: ${metrics.latency.p95} ms (${metrics.latency.sampleCount} writes)`;
+    p50El.style.color = metrics.latency.p50 <= 50 ? 'var(--text-primary)' : 'var(--red)';
+  } else {
+    p50El.textContent = '—';
+    p95El.textContent = 'p95: — (0 writes)';
+    p50El.style.color = 'var(--text-muted)';
+  }
+
+  // Runtime Errors
+  const errEl = document.getElementById('diagRuntimeErrors');
+  const errCount = metrics.runtimeErrors?.count || 0;
+  errEl.textContent = errCount;
+  errEl.style.color = errCount === 0 ? 'var(--olive)' : 'var(--cherry)';
+
+  // Buffer
+  const bufEl = document.getElementById('diagBufferStatus');
+  const retained = metrics.buffer?.retainedEvents || 0;
+  const capacity = metrics.buffer?.capacity || 100;
+  bufEl.textContent = `${retained} / ${capacity}`;
+}
+
+function renderDiagnosticsEvents(events) {
+  const emptyState = document.getElementById('diagEmptyState');
+  const tableWrapper = document.getElementById('diagTableWrapper');
+  const list = document.getElementById('diagEventsList');
+
+  if (!Array.isArray(events) || events.length === 0) {
+    if (emptyState) emptyState.style.display = 'block';
+    if (tableWrapper) tableWrapper.style.display = 'none';
+    if (list) list.innerHTML = '';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+  if (tableWrapper) tableWrapper.style.display = 'block';
+
+  list.innerHTML = events.map(evt => {
+    const timeStr = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '—';
+    const type = escapeHtml(evt.type || 'unknown');
+    const outcome = evt.outcome || 'info';
+    const outcomeClass = outcome === 'success' ? 'badge-success' : outcome === 'failure' ? 'badge-failure' : 'badge-info';
+    const details = escapeHtml(evt.details || evt.errorCode || '—');
+
+    return `
+      <tr class="diag-event-row">
+        <td class="diag-event-cell" style="color: var(--text-muted); font-size: 12px; white-space: nowrap;">${timeStr}</td>
+        <td class="diag-event-cell" style="font-weight: 500;">${type}</td>
+        <td class="diag-event-cell">
+          <span class="diag-badge ${outcomeClass}">${outcome}</span>
+        </td>
+        <td class="diag-event-cell" style="color: var(--text-secondary); word-break: break-word;">${details}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderDiagnosticsFallback() {
+  const recEl = document.getElementById('diagRecoveryRate');
+  if (recEl) {
+    recEl.textContent = '—';
+    recEl.style.color = 'var(--text-muted)';
+  }
+  const recCountEl = document.getElementById('diagRecoveryCount');
+  if (recCountEl) recCountEl.textContent = 'No attempts recorded';
+  const p50El = document.getElementById('diagLatencyP50');
+  if (p50El) {
+    p50El.textContent = '—';
+    p50El.style.color = 'var(--text-muted)';
+  }
+  const p95El = document.getElementById('diagLatencyP95');
+  if (p95El) p95El.textContent = 'p95: — (0 writes)';
+  const errEl = document.getElementById('diagRuntimeErrors');
+  if (errEl) {
+    errEl.textContent = '0';
+    errEl.style.color = 'var(--olive)';
+  }
+  const bufEl = document.getElementById('diagBufferStatus');
+  if (bufEl) bufEl.textContent = '0 / 100';
+
+  const emptyState = document.getElementById('diagEmptyState');
+  if (emptyState) emptyState.style.display = 'block';
+  const tableWrapper = document.getElementById('diagTableWrapper');
+  if (tableWrapper) tableWrapper.style.display = 'none';
+}
+
+function setupDiagnostics() {
+  const clearBtn = document.getElementById('clearDiagnosticsBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to clear all diagnostic history?')) {
+        await sendMessage({ type: 'CLEAR_DIAGNOSTICS' });
+        showSaveIndicator('Diagnostics cleared');
+        await loadDiagnosticsTab();
+      }
+    });
+  }
+}
+
