@@ -1013,3 +1013,29 @@ body {
   vertical-align: middle;
 }
 
+/* ─── Save / Toast Indicator ────────────────────────────── */
+.save-indicator {
+  position: fixed;
+  bottom: 24px;
+  right: 28px;
+  background: var(--card);
+  border: 1px solid var(--border-cherry);
+  box-shadow: var(--shadow-md);
+  color: var(--cherry);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 999;
+}
+
+.save-indicator.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+

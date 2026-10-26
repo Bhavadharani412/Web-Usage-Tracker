@@ -4,7 +4,9 @@
   "description": "Privacy-first active usage tracking & intelligent tab cleanup extension for Chrome.",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/aggregation.test.mjs tests/benchmarks.test.mjs tests/browser-compat.test.mjs tests/classifier.test.mjs tests/tracker.test.mjs tests/week-math.test.mjs"
+    "test": "node --test tests/aggregation.test.mjs tests/benchmarks.test.mjs tests/browser-compat.test.mjs tests/classifier.test.mjs tests/diagnostics.test.mjs tests/tracker.test.mjs tests/week-math.test.mjs",
+    "test:unit": "node --test tests/aggregation.test.mjs tests/benchmarks.test.mjs tests/browser-compat.test.mjs tests/classifier.test.mjs tests/diagnostics.test.mjs tests/tracker.test.mjs tests/week-math.test.mjs",
+    "test:e2e": "node --test tests/playwright/dashboard-diagnostics.test.mjs"
   },
   "keywords": [
     "chrome-extension",
@@ -14,5 +16,8 @@
     "time-tracker"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
 }
