@@ -10,6 +10,7 @@ import * as tabManager from './tab-manager.js';
 import * as idleManager from './idle-manager.js';
 import * as aggregation from './aggregation.js';
 import tracker from './tracker.js';
+import diagnostics from '../utils/diagnostics.js';
 import { getSettings,getDailyUsage, getMultipleDailyUsage,updateTodayUsage,saveSettings,recordTabDecision,getDomainDecisionStats,getWeeklyStats,persistTabInactive } from '../storage/storage.js';
 import { getDateString, getWeekRange, getPreviousWeekRange, getDateRange } from '../utils/time-format.js';
 import { aggregateWeekly } from './aggregation.js';
@@ -32,6 +33,7 @@ async function initialize() {
   if (!initPromise) {
     initPromise = (async () => {
       try {
+        await diagnostics.init();
         await tracker.init();
         await tabManager.init();
         await idleManager.init();
@@ -308,6 +310,22 @@ async function handleMessage(message) {
           currentOpenTabs: tabManager.getOpenTabCount()
         }
       };
+    }
+
+    case 'GET_DIAGNOSTICS': {
+      await diagnostics.init();
+      return {
+        success: true,
+        data: {
+          metrics: diagnostics.getHealthMetrics(),
+          events: diagnostics.getRecentEvents(message.limit || 50)
+        }
+      };
+    }
+
+    case 'CLEAR_DIAGNOSTICS': {
+      await diagnostics.clearDiagnostics();
+      return { success: true };
     }
 
     default:

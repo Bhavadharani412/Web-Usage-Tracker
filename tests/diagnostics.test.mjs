@@ -231,3 +231,47 @@ test('Diagnostics — Storage layer writes record write latency and error metric
   assert.equal(errorEvent.outcome, 'failure');
 });
 
+test('Diagnostics — Service worker recovery records recovery attempts and outcomes', async () => {
+  mockEnv.reset();
+  const { default: defaultDiag } = await import('../src/utils/diagnostics.js');
+  const { default: tracker, TrackingState } = await import('../src/background/tracker.js');
+
+  await defaultDiag.clearDiagnostics();
+
+  const classification = {
+    domain: 'github.com',
+    hostname: 'github.com',
+    category: 'GitHub',
+    categoryId: 'github',
+    pageType: 'Repository',
+    icon: '🐙',
+    isInternal: false
+  };
+
+  // Start tracking session at tab 303
+  await tracker.startSession(303, classification);
+
+  // Simulate Service Worker termination:
+  tracker.currentSession = null;
+  tracker.state = TrackingState.INACTIVE;
+  tracker.isInitialized = false;
+
+  // Worker restarts and calls tracker.init()
+  await tracker.init();
+
+  // Verify diagnostic record of successful recovery
+  const metrics = defaultDiag.getHealthMetrics();
+  assert.equal(metrics.recovery.hasData, true);
+  assert.equal(metrics.recovery.successful, 1);
+  assert.equal(metrics.recovery.total, 1);
+  assert.equal(metrics.recovery.rate, 100);
+
+  const recent = defaultDiag.getRecentEvents(5);
+  const recoveryEvent = recent.find(e => e.type === 'sw_recovery');
+  assert.ok(recoveryEvent);
+  assert.equal(recoveryEvent.outcome, 'success');
+
+  await tracker.endSession();
+});
+
+

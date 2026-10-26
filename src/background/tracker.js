@@ -11,6 +11,7 @@
 
 import { getDateString, splitSessionSegmentsByDay, splitSegmentByDay } from '../utils/time-format.js';
 import { updateDailyUsage, getActiveSessionCheckpoint, persistActiveSessionCheckpoint, clearActiveSessionCheckpoint } from '../storage/storage.js';
+import diagnostics from '../utils/diagnostics.js';
 
 /** @enum {string} */
 export const TrackingState = {
@@ -88,13 +89,17 @@ class Tracker {
 
         if (!isTabLive) {
           // Tab closed during worker suspension -> end session cleanly
+          diagnostics.recordRecoveryAttempt(false, 'Tab closed during worker suspension');
           await this.endSession();
         } else {
+          diagnostics.recordRecoveryAttempt(true, 'Active session restored from checkpoint');
           console.log('[WebTrack] Active session restored from checkpoint for tab:', this.currentSession.tabId);
         }
       }
       this.isInitialized = true;
     } catch (e) {
+      diagnostics.recordRecoveryAttempt(false, 'Failed to restore active session checkpoint');
+      diagnostics.recordRuntimeError('SW_RECOVERY_ERROR', e?.message || 'Checkpoint recovery failed');
       console.error('[WebTrack] Failed to restore active session checkpoint:', e);
     }
   }
