@@ -1,0 +1,59 @@
+
+name: Documentation Improvement
+description: Report incorrect, missing, or confusing documentation.
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help make WebTrack easier to install, understand, develop, and contribute to.
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Identify the file, section, or page that needs improvement.
+      placeholder: e.g. README.md installation instructions
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Type of Improvement
+      options:
+        - Incorrect information
+        - Missing instructions
+        - Unclear explanation
+        - Outdated instructions
+        - Missing examples
+        - Typographical or formatting issue
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What Needs Improvement?
+      description: Explain what is incorrect, missing, or confusing.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested_change
+    attributes:
+      label: Suggested Improvement
+      description: Describe the correction or additional content you recommend.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Include relevant links, screenshots, or examples.
+    validations:
+      required: false
