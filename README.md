@@ -9,6 +9,7 @@ A privacy-first Manifest V3 Chrome extension that tracks your actual active brow
 ## Key Architectural Highlights & Improvements
 
 - **Service-Worker Suspension Survival:** Active tracking sessions checkpoint state (`tabId`, `startTime`, `accumulatedSeconds`, `segments`) to `chrome.storage.session` on every state transition (`startSession`, `pause`, `resume`). When Chrome suspends the background service worker, un-flushed tracking state is automatically restored on worker wake-up with zero data loss.
+- **Local Extension Health Diagnostics:** Modular, lightweight health observability manager recording service worker recovery success rates, storage write latency distribution (p50/p95), and deduplicated runtime error counts into a bounded 100-entry rolling buffer with zero browsing URL leakage and negligible overhead (~15 µs/event).
 - **Exact Midnight Session Splitting:** Sessions spanning midnight (e.g. 11:45 PM to 00:15 AM) are automatically split across calendar day boundaries so each day receives its precise credited duration.
 - **Like-for-Like Partial Week Comparison:** Week-over-week trends compare identical elapsed days of the current week against the same corresponding days of the previous week, eliminating artificial percentage drops during ongoing weeks.
 - **Verified Zero-Drift & Zero-Loss:** Includes automated stopwatch drift benchmarks (0.0000% error) and forced service-worker suspension benchmarks (0s data loss).
@@ -42,9 +43,18 @@ A privacy-first Manifest V3 Chrome extension that tracks your actual active brow
 - **Insights**: Factual, non-judgmental observations about your usage
 - **Tab Hygiene**: Acceptance rate, average open tabs, longest inactive tab
 
+### 🩺 Local Health Diagnostics
+- **Observable Reliability**: Tracks service worker recovery success rate and records recovery outcomes
+- **Storage Write Latency**: Computes accurate p50 and p95 latency distributions from valid write samples
+- **Runtime Error Logging**: Consolidated counting of Chrome runtime errors without double-counting
+- **Bounded Rolling Buffer**: Strictly capped at 100 entries with automatic FIFO eviction
+- **Dashboard Diagnostics Panel**: Dedicated health view with metric cards, recent events table, and empty/corrupted data handling
+- **User Control**: Quick action to clear diagnostic history at any time
+
 ### 🔒 Privacy-First
 - **100% local** — no server, no account, no analytics
 - Only stores domain/category, not full URLs
+- Diagnostic records strictly exclude URLs, domain names, page titles, and browsing content
 - Detailed permission justifications provided in [PRIVACY.md](./PRIVACY.md)
 
 ---
@@ -64,12 +74,16 @@ A privacy-first Manifest V3 Chrome extension that tracks your actual active brow
 
 ## Automated Tests & Benchmarks
 
-WebTrack includes comprehensive automated tests built on Node.js' native test runner (`node:test`).
+WebTrack includes comprehensive automated tests built on Node.js' native test runner (`node:test`) and Playwright for browser UI verification.
 
 ### Run Test Suite & Benchmarks
 
 ```bash
+# Run unit & integration test suite with benchmarks
 npm test
+
+# Run Playwright browser UI tests (Chromium / Chrome)
+npm run test:e2e
 ```
 
 ### Test Coverage
@@ -81,7 +95,9 @@ npm test
 | `tests/week-math.test.mjs` | Date math, Monday-based week ranges, midnight session splitting, like-for-like week math |
 | `tests/aggregation.test.mjs` | Weekly rollup calculations & daily breakdown aggregation |
 | `tests/browser-compat.test.mjs` | Browser API adapter fallbacks |
-| `tests/benchmarks.test.mjs` | Stopwatch accuracy benchmark (0.00% drift) & forced suspension recovery benchmark (0s loss) |
+| `tests/diagnostics.test.mjs` | Rolling event buffer capacity (100 cap), FIFO eviction, p50/p95 latency percentiles, SW recovery rate, runtime error deduplication, privacy constraints, corrupted storage resilience |
+| `tests/benchmarks.test.mjs` | Stopwatch accuracy benchmark (0.00% drift), forced suspension recovery benchmark (0s loss), and diagnostics instrumentation overhead (1,000 events) |
+| `tests/playwright/dashboard-diagnostics.test.mjs` | Rendered dashboard UI: empty state, populated metrics, privacy verification, user clear-history action, and corrupt data handling |
 
 ### Benchmark Results
 
@@ -97,6 +113,16 @@ Suspension Timeline  : Session started 120s ago, SW suspended 60s ago, recovered
 Expected Active Time : 120s
 Recovered Active Time: 120s
 Un-flushed Time Lost : 0s
+
+--- Diagnostics Instrumentation Benchmark ---
+Events Processed       : 1000
+Baseline Duration      : 0.511 ms
+Instrumented Duration  : 16.385 ms
+Total Overhead         : 15.874 ms
+Overhead Per Event     : 15.87 µs (0.0159 ms)
+Buffer Retained / Cap  : 100 / 100
+Storage Latency p50    : 2.13 ms
+Storage Latency p95    : 3.25 ms
 ```
 
 ---
@@ -120,6 +146,7 @@ graph TD
         TR["tracker.js (State Machine & Checkpointing)"]
         IM["idle-manager.js (Idle Threshold Config)"]
         AG["aggregation.js (Periodic Flush & Rollup)"]
+        DIAG["diagnostics.js (Bounded Buffer & Health Metrics)"]
     end
 
     subgraph ClassificationLayer["Classification Pipeline"]
@@ -129,13 +156,13 @@ graph TD
     end
 
     subgraph StorageLayer["Persistence Layer"]
-        ST_Local["chrome.storage.local (Daily Usage & Settings)"]
+        ST_Local["chrome.storage.local (Daily Usage, Settings & Diagnostics)"]
         ST_Session["chrome.storage.session (Active Session Checkpoint & Inactivity)"]
     end
 
     subgraph UILayer["UI Surfaces"]
         POP["Popup (Daily Snapshot)"]
-        DASH["Dashboard (Weekly Reports & Settings)"]
+        DASH["Dashboard (Weekly Reports, Diagnostics & Settings)"]
         CLEAN["Cleanup UI (Tab Review Engine)"]
     end
 
@@ -147,6 +174,7 @@ graph TD
     SW --> TM
     SW --> IM
     SW --> AG
+    SW --> DIAG
 
     TM --> TR
     TM --> CL
@@ -155,8 +183,10 @@ graph TD
 
     TR --> ST_Session
     TR --> ST_Local
+    TR --> DIAG
     TM --> ST_Session
     AG --> ST_Local
+    DIAG --> ST_Local
 
     POP -- "sendMessage" --> SW
     DASH -- "sendMessage" --> SW
@@ -193,7 +223,7 @@ Manifest V3 requires permissions to be explicitly declared. WebTrack requests on
 | Permission | Reason |
 | :--- | :--- |
 | `tabs` | Required to read active tab domain/category for tracking and track tab inactivity timestamps for cleanup suggestions. Data stays 100% local. |
-| `storage` | Required to persist settings, daily summaries (`chrome.storage.local`), and active session checkpoints (`chrome.storage.session`). |
+| `storage` | Required to persist settings, daily summaries (`chrome.storage.local`), active session checkpoints (`chrome.storage.session`), and local diagnostics buffer (`wt_diagnostics`). |
 | `idle` | Required to detect system idle state and pause tracking automatically when away from keyboard/mouse. |
 | `alarms` | Required to schedule periodic data flushes (every 5 minutes) and hourly maintenance. |
 
@@ -222,13 +252,17 @@ web-usage-tracker/
 │   │   ├── site-rules.js          # Per-site display names & page types
 │   │   └── classifier.js          # Main classify(url) pipeline
 │   ├── storage/                   # Persistence layer
-│   │   ├── storage.js             # chrome.storage.local & session wrapper
+│   │   ├── storage.js             # chrome.storage.local & session wrapper with latency timing
 │   │   └── schema.js              # Data models & defaults
 │   ├── cleanup/                   # Tab cleanup engine
 │   │   ├── suggestions.js         # Candidate calculation
 │   │   └── cleanup-ui.js          # Shared review UI rendering
 │   ├── popup/                     # Daily snapshot popup
-│   └── dashboard/                 # Weekly reports & settings
+│   ├── dashboard/                 # Weekly reports, diagnostics & settings
+│   └── utils/                     # Shared utilities & observability
+│       ├── diagnostics.js         # Diagnostics manager & bounded rolling buffer (100 cap)
+│       ├── browser-adapter.js     # Browser API compatibility shim
+│       └── time-format.js         # Time math & date helpers
 └── tests/                         # Native node:test suite & benchmarks
     ├── mock-chrome.mjs            # Chrome API mock environment
     ├── tracker.test.mjs           # State machine & suspension recovery tests
@@ -236,7 +270,10 @@ web-usage-tracker/
     ├── week-math.test.mjs         # Midnight split & like-for-like week math tests
     ├── aggregation.test.mjs       # Weekly rollup tests
     ├── browser-compat.test.mjs    # Compatibility shim tests
-    └── benchmarks.test.mjs        # Stopwatch & forced suspension benchmarks
+    ├── diagnostics.test.mjs       # Diagnostics buffer, eviction, percentiles & errors
+    ├── benchmarks.test.mjs        # Stopwatch drift, suspension recovery & diagnostics overhead benchmarks
+    └── playwright/                # Browser UI Playwright test suite
+        └── dashboard-diagnostics.test.mjs # Rendered dashboard diagnostics verification
 ```
 
 ---
