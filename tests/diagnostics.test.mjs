@@ -273,5 +273,3 @@ test('Diagnostics — Service worker recovery records recovery attempts and outc
 
   await tracker.endSession();
 });
-
-

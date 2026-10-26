@@ -693,4 +693,3 @@ function setupDiagnostics() {
     });
   }
 }
-

@@ -156,4 +156,3 @@ test('Benchmark 3 — Diagnostics Instrumentation Overhead & Buffer Capacity Ben
     assert.equal(event.details.includes('https://'), false);
   }
 });
-
