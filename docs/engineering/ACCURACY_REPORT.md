@@ -29,7 +29,7 @@ All measurements were compared against an independent ground-truth stopwatch tim
 
 ## 2. Test Environment & Methodology
 
-- **Browser Binary:** Google Chrome for Windows (`C:\Program Files\Google\Chrome\Application\chrome.exe`)
+- **Browser Binary:** Playwright-managed Chromium (`chromium.launch({ headless: true })`)
 - **Automation Framework:** Playwright 1.64.1
 - **Node.js Runtime:** v24.12.0
 - **Controlled 90-Second Timeline Structure:**

@@ -32,6 +32,8 @@ const ROOT_DIR = path.resolve('.');
  * Creates a lightweight local HTTP server to serve harness and modules.
  */
 function createStaticServer() {
+  const sockets = new Set();
+
   const server = http.createServer((req, res) => {
     const safePath = path.normalize(decodeURIComponent(req.url.split('?')[0])).replace(/^(\.\.[/\\])+/, '');
     const filePath = path.join(ROOT_DIR, safePath);
@@ -46,40 +48,71 @@ function createStaticServer() {
       };
       res.writeHead(200, {
         'Content-Type': contentTypes[ext] || 'text/plain',
-        'Cache-Control': 'no-store'
+        'Cache-Control': 'no-store',
+        'Connection': 'close'
       });
       res.end(fs.readFileSync(filePath));
     } else {
-      res.writeHead(404);
+      res.writeHead(404, { 'Connection': 'close' });
       res.end('Not Found');
     }
   });
 
-  return new Promise((resolve) => {
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
     server.listen(0, '127.0.0.1', () => {
+      server.removeListener('error', reject);
       const { port } = server.address();
       resolve({
         server,
         port,
-        close: () => new Promise((done) => server.close(done))
+        close: () =>
+          new Promise((done) => {
+            if (typeof server.closeAllConnections === 'function') {
+              server.closeAllConnections();
+            }
+            for (const socket of sockets) {
+              socket.destroy();
+            }
+            sockets.clear();
+            server.close(() => done());
+          })
       });
     });
   });
 }
 
-test('Issue #7 — Ground-Truth Real-Browser Accuracy Benchmark (10+ Controlled Executions)', async () => {
-  const staticServer = await createStaticServer();
-  const harnessUrl = `http://127.0.0.1:${staticServer.port}/tests/playwright/accuracy-harness.html`;
-
-  const browser = await chromium.launch({
-    executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    headless: true,
-    args: ['--no-sandbox', '--disable-gpu']
-  });
-
+test('Issue #7 — Ground-Truth Real-Browser Accuracy Benchmark (10+ Controlled Executions)', async (t) => {
+  let staticServer = null;
+  let browser = null;
   const RUN_COUNT = 10;
   const executionRecords = [];
   const failureRecords = [];
+
+  t.after(async () => {
+    if (browser) {
+      await browser.close().catch(() => {});
+      browser = null;
+    }
+    if (staticServer) {
+      await staticServer.close().catch(() => {});
+      staticServer = null;
+    }
+  });
+
+  try {
+    staticServer = await createStaticServer();
+    const harnessUrl = `http://127.0.0.1:${staticServer.port}/tests/playwright/accuracy-harness.html`;
+
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-gpu']
+    });
 
   console.log(`\n================================================================`);
   console.log(` Starting Ground-Truth Browser Accuracy Benchmark (${RUN_COUNT} Runs)`);
@@ -259,12 +292,19 @@ test('Issue #7 — Ground-Truth Real-Browser Accuracy Benchmark (10+ Controlled 
       failureRecords.push(failureRecord);
       console.error(`Run ${String(runIndex).padStart(2)} FAILED:`, runErr);
     } finally {
-      await context.close();
+      await context.close().catch(() => {});
     }
   }
-
-  await browser.close();
-  await staticServer.close();
+  } finally {
+    if (browser) {
+      await browser.close().catch(() => {});
+      browser = null;
+    }
+    if (staticServer) {
+      await staticServer.close().catch(() => {});
+      staticServer = null;
+    }
+  }
 
   // ── Statistical Calculations ─────────────────────────────────
   const validRuns = executionRecords.filter((r) => r.status === 'SUCCESS');
@@ -360,9 +400,9 @@ All measurements were compared against an independent ground-truth stopwatch tim
 
 ## 2. Test Environment & Methodology
 
-- **Browser Binary:** Google Chrome for Windows (\`C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\`)
+- **Browser Binary:** Playwright-managed Chromium (\`chromium.launch({ headless: true })\`)
 - **Automation Framework:** Playwright 1.64.1
-- **Node.js Runtime:** v24.12.0
+- **Node.js Runtime:** ${process.version}
 - **Controlled 90-Second Timeline Structure:**
   - **Phase 1 (T=0s to T=30s):** Active tab tracking on Tab 1 (\`github.com\`). Expected duration: **30.0s**.
   - **Phase 2 (T=30s to T=55s):** Asynchronous tab switch to Tab 2 (\`leetcode.com\`). Expected duration: **25.0s**.
