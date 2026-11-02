@@ -1,207 +1,88 @@
-# WebTrack — Web Usage Tracker & Intelligent Tab Cleanup
+<p align="center">
+  <img src="assets/icon128.png" width="76" height="76" alt="Web-Usage-Tracker Logo" />
+</p>
 
-> **Understand your web time. Clean up your tabs.**
+<h1 align="center">Web-Usage-Tracker (WebTrack)</h1>
 
-A privacy-first Manifest V3 Chrome extension that tracks your actual active browser usage, intelligently groups related URLs into website categories, and provides daily and weekly reports with tab cleanup suggestions.
+<p align="center">
+  <strong>Event-driven active browser usage tracking and decision-weighted tab cleanup for Chrome Manifest V3.</strong>
+</p>
 
----
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/Bhavadharani412/Web-Usage-Tracker/test.yml?branch=main&label=CI&style=flat-square" alt="CI Status" />
+  <img src="https://img.shields.io/github/license/Bhavadharani412/Web-Usage-Tracker?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/JavaScript-ES_Modules-F7DF1E?style=flat-square&logo=javascript&logoColor=000000" alt="JavaScript ES Modules" />
+  <img src="https://img.shields.io/badge/Chrome-Manifest_V3-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Chrome Manifest V3" />
+  <img src="https://img.shields.io/badge/Privacy-Local--First-2E8B57?style=flat-square" alt="Local First Privacy" />
+</p>
 
-## Key Architectural Highlights & Improvements
-
-- **Deterministic State Machine & Concurrency Safety (Issue #6):** All tracker state transitions (`INACTIVE`, `TRACKING`, `PAUSED`) execute through a serialized FIFO promise queue (`_enqueue`), guaranteeing at most one active session ($N_{\text{active}} \le 1$), idempotent duplicate-event handling, and monotonic checkpoint versioning (`checkpointVersion`) that prevents stale checkpoint overwrites.
-- **Bounded Storage Write Coalescing & Tab Reconciliation (Issue #5):** In-memory dirty buffering coalesces rapid `chrome.storage.session` tab inactivity mutations with a 150ms debounce window and 800ms maximum hold bound, achieving a **99.95% reduction in physical storage writes** under 1,000 rapid tab switches while maintaining 100% read-your-own-writes consistency. Includes conservative runtime `reconcileTabs()` recovery.
-- **Decision-Weighted Cleanup Engine (Issue #8):** Batches historical user keep/close decisions in $O(T + D)$ complexity (`aggregateDomainDecisions` and `rankCleanupCandidates`). Suppresses domains with $\ge 80\%$ keep ratio (minimum 5 samples) while strictly enforcing protected-domain, pinned-tab, and audible-tab precedence with zero false suppression.
-- **Empirical Ground-Truth Browser Accuracy (Issue #7):** Validated across 10 real-browser Playwright executions of a 90-second controlled multi-phase timeline, achieving **0.0000s Mean Absolute Error (MAE)** and **0.0000s Median Absolute Error (MedAE)** ([ACCURACY_REPORT.md](./docs/engineering/ACCURACY_REPORT.md)).
-- **Service-Worker Suspension Survival:** Active tracking sessions checkpoint state (`tabId`, `startTime`, `accumulatedSeconds`, `segments`) to `chrome.storage.session` on every state transition (`startSession`, `pause`, `resume`). When Chrome suspends the background service worker, un-flushed tracking state is automatically restored on worker wake-up with zero data loss.
-- **Local Extension Health Diagnostics:** Modular, lightweight health observability manager recording service worker recovery success rates, storage write latency distribution (p50/p95), and deduplicated runtime error counts into a bounded 100-entry rolling buffer with zero browsing URL leakage and negligible overhead (~15 µs/event).
-- **Exact Midnight Session Splitting:** Sessions spanning midnight (e.g. 11:45 PM to 00:15 AM) are automatically split across calendar day boundaries so each day receives its precise credited duration.
-- **Like-for-Like Partial Week Comparison:** Week-over-week trends compare identical elapsed days of the current week against the same corresponding days of the previous week, eliminating artificial percentage drops during ongoing weeks.
-- **Verified Zero-Drift & Zero-Loss:** Includes automated stopwatch drift benchmarks (0.0000% error) and forced service-worker suspension benchmarks (0s data loss).
-
----
-
-## Features
-
-### 📊 Active Time Tracking
-- Tracks **actual active browser time** — only when Chrome is focused, the tab is active, and you're not idle
-- Event-based tracking using timestamps (no running timers)
-- Automatic pause when switching to other apps or going idle
-- Checkpointed state persistence to survive background worker suspension
-
-### 🏷️ Smart Website Clustering
-- Groups related URLs into website categories (e.g., all LeetCode pages → "LeetCode")
-- Pre-configured rules for 20+ popular sites (GitHub, YouTube, Google services, etc.)
-- Page-type classification (Problems, Contest, Watch, Search, etc.)
-- Unknown sites auto-categorized by domain
-
-### 🧹 Intelligent Tab Cleanup
-- Identifies tabs that haven't been used past a configurable threshold
-- **Suggests** cleanup — never auto-closes tabs
-- Checkbox-based review: close or keep selected tabs
-- Learns from your decisions to reduce future noise
-- Protected tab support (pinned, audible, whitelisted domains)
-
-### 📈 Daily & Weekly Reports
-- **Today**: Active time, top websites with usage bars, site count
-- **Weekly**: Total/average time, daily bar chart, top sites with like-for-like week-over-week % change
-- **Insights**: Factual, non-judgmental observations about your usage
-- **Tab Hygiene**: Acceptance rate, average open tabs, longest inactive tab
-
-### 🩺 Local Health Diagnostics
-- **Observable Reliability**: Tracks service worker recovery success rate and records recovery outcomes
-- **Storage Write Latency**: Computes accurate p50 and p95 latency distributions from valid write samples
-- **Runtime Error Logging**: Consolidated counting of Chrome runtime errors without double-counting
-- **Bounded Rolling Buffer**: Strictly capped at 100 entries with automatic FIFO eviction
-- **Dashboard Diagnostics Panel**: Dedicated health view with metric cards, recent events table, and empty/corrupted data handling
-- **User Control**: Quick action to clear diagnostic history at any time
-
-### 🔒 Privacy-First
-- **100% local** — no server, no account, no analytics
-- Only stores domain/category, not full URLs
-- Diagnostic records strictly exclude URLs, domain names, page titles, and browsing content
-- Detailed permission justifications provided in [PRIVACY.md](./PRIVACY.md)
+<p align="center">
+  <a href="https://github.com/Bhavadharani412/Web-Usage-Tracker">Repository</a> ·
+  <a href="https://deepwiki.com/Bhavadharani412/Web-Usage-Tracker">DeepWiki</a> ·
+  <a href="https://github.com/Bhavadharani412/Web-Usage-Tracker/actions/workflows/test.yml">CI Runs</a> ·
+  <a href="https://github.com/Bhavadharani412/Web-Usage-Tracker/issues">Issues</a> ·
+  <a href="./PRIVACY.md">Privacy Policy</a>
+</p>
 
 ---
 
-## Getting Started
+## Project Overview
 
-### Installation (Development)
+**Web-Usage-Tracker (WebTrack)** is a local-first Chrome Manifest V3 extension that measures actual active browsing time, clusters related URLs into website categories, and provides user-controlled tab cleanup recommendations.
 
-1. Clone or download this repository
-2. Open Chrome and navigate to `chrome://extensions`
-3. Enable **Developer mode** (toggle in top right)
-4. Click **Load unpacked**
-5. Select the `web-usage-tracker` directory (containing `manifest.json`)
-6. Pin WebTrack for easy access
+Conventional browser timers often conflate open tab duration with active engagement, lose in-progress session data when Chrome terminates background service workers, or require external cloud telemetry. WebTrack addresses these engineering problems through four core design mechanisms:
 
----
+- **Strict Active-Time Accounting:** Time accumulates only when the browser window is focused, the tab is active, and the user is not idle (`chrome.idle`).
+- **Service-Worker Suspension Resilience:** State transitions (`startSession`, `pause`, `resume`) write versioned checkpoints to `chrome.storage.session`, allowing the background service worker to recover active sessions across forced suspensions without data loss.
+- **Bounded Storage Coalescing:** Rapid tab-switching events are buffered in memory and flushed within bounded time windows (`150ms` debounce, `800ms` max hold), reducing physical storage write operations by 99.95% under high-frequency switching while preserving read-your-own-writes consistency.
+- **Decision-Weighted Tab Cleanup:** Inactive tabs are evaluated in $O(T + D)$ time using historical keep/close decisions and strict protected-domain precedence, never auto-closing tabs without explicit user confirmation.
 
-## Automated Tests & Benchmarks
-
-WebTrack includes comprehensive automated tests built on Node.js' native test runner (`node:test`) and Playwright for browser UI verification.
-
-### Run Test Suite & Benchmarks
-
-```bash
-# Run full unit, concurrency, storage, cleanup & synthetic benchmark suite
-npm test
-
-# Run test suite with line & branch code coverage analysis
-npm run test:coverage
-
-# Run Playwright browser UI critical path tests
-node --test tests/playwright/dashboard-diagnostics.test.mjs
-
-# Run 10-run real-browser ground-truth accuracy benchmark (90s controlled timeline)
-npm run test:accuracy
-```
-
-### Test Coverage
-
-| Test File | Scope |
-| :--- | :--- |
-| `tests/tracker.test.mjs` | Tracker state machine, state persistence, service-worker suspension recovery |
-| `tests/tracker-concurrency.test.mjs` | State transition matrix, serialized event queue, rapid tab activations, duplicate session prevention, monotonic checkpoint versioning, stale checkpoint rejection (Issue #6) |
-| `tests/storage.test.mjs` | Bounded write coalescing, read-your-own-writes consistency, failed write retry retention, stale-tab reconciliation, conservative API failure handling (Issue #5) |
-| `tests/cleanup-suggestions.test.mjs` | $O(T + D)$ batched decision aggregation, keep ratio suppression ($\ge 80\%$, sample $\ge 5$), protected-domain precedence, scale testing (Issue #8) |
-| `tests/classifier.test.mjs` | Table tests for URL classification, site rules, page types, Google subdomains, edge cases |
-| `tests/week-math.test.mjs` | Date math, Monday-based week ranges, midnight session splitting, like-for-like week math |
-| `tests/aggregation.test.mjs` | Weekly rollup calculations & daily breakdown aggregation |
-| `tests/browser-compat.test.mjs` | Browser API adapter fallbacks |
-| `tests/diagnostics.test.mjs` | Rolling event buffer capacity (100 cap), FIFO eviction, p50/p95 latency percentiles, SW recovery rate, runtime error deduplication, privacy constraints, corrupted storage resilience |
-| `tests/benchmarks.test.mjs` | Stopwatch accuracy benchmark (0.00% drift), forced suspension recovery benchmark (0s loss), diagnostics instrumentation overhead (1,000 events), and storage write coalescing benchmark (1,000 rapid switch events — 99.95% reduction) |
-| `tests/playwright/dashboard-diagnostics.test.mjs` | Rendered dashboard UI: empty state, populated metrics, privacy verification, user clear-history action, and corrupt data handling |
-| `tests/playwright/browser-accuracy.benchmark.mjs` | Real-browser 90-second controlled multi-phase ground-truth benchmark across 10 valid runs (Issue #7) |
-
-### Benchmark Results
-
-```text
---- Stopwatch Benchmark ---
-Expected Duration  : 300s
-Calculated Duration: 300s
-Absolute Error     : 0s
-Relative Error     : 0.0000%
-
---- Forced SW Suspension Benchmark ---
-Suspension Timeline  : Session started 120s ago, SW suspended 60s ago, recovered at T=0s
-Expected Active Time : 120s
-Recovered Active Time: 120s
-Un-flushed Time Lost : 0s
-
---- Diagnostics Instrumentation Benchmark ---
-Events Processed       : 1000
-Baseline Duration      : 0.511 ms
-Instrumented Duration  : 16.385 ms
-Total Overhead         : 15.874 ms
-Overhead Per Event     : 15.87 µs (0.0159 ms)
-Buffer Retained / Cap  : 100 / 100
-Storage Latency p50    : 2.13 ms
-Storage Latency p95    : 3.25 ms
-
---- Storage Write Coalescing Benchmark (1,000 Switch Events) ---
-Rapid Switch Events    : 1000
-Baseline Storage Writes: 2000
-Optimized Writes       : 1
-Write Reduction        : 99.95% (Target: >= 35.00%)
-Pending Writes Flushed : 0 (Clean)
-Reconciled Live Tabs   : 1
-Stale Tabs Pruned      : 8
-Data Loss Rate         : 0.0000%
-
---- Real-Browser Ground-Truth Accuracy (10 Executions, 90s Scenario) ---
-Valid Recorded Runs    : 10 (0 Failures)
-Ground Truth Active    : 75.0s (90.0s Total Elapsed)
-Mean Absolute Error    : 0.0000s (Target: < 5.0s)
-Median Absolute Error  : 0.0000s (Target: < 2.0s)
-Mean Percentage Error  : 0.0000% (Target: < 2.0%)
-Duplicate Time         : 0.0000s
-```
+WebTrack is built for developers, researchers, and privacy-conscious users who want accurate local insight into browser usage and structured tab hygiene without external network transmission.
 
 ---
 
-## Architecture Overview
+## Technical Architecture
 
-### 1. High-Level System Architecture
+WebTrack is structured into five decoupled layers inside a zero-build ES module architecture: **Browser Event Sources**, **Background Service Worker**, **Classification Pipeline**, **Persistence Layer**, and **UI Surfaces**.
 
 ```mermaid
-graph TD
-    subgraph BrowserEvents["Chrome Event Sources"]
-        BE_Tabs["chrome.tabs onActivated / onUpdated / onRemoved"]
-        BE_Win["chrome.windows onFocusChanged"]
-        BE_Idle["chrome.idle onStateChanged"]
-        BE_Alarm["chrome.alarms onAlarm"]
+flowchart TD
+    subgraph BrowserEvents["Chrome Browser Events"]
+        E_Tabs["chrome.tabs (onActivated / onCreated / onUpdated / onRemoved)"]
+        E_Win["chrome.windows (onFocusChanged)"]
+        E_Idle["chrome.idle (onStateChanged)"]
+        E_Alarm["chrome.alarms (onAlarm)"]
     end
 
-    subgraph ServiceWorkerLayer["Background Service Worker Layer"]
-        SW["service-worker.js (Idempotent Init & Event Router)"]
-        TM["tab-manager.js (Tab Lifecycle & Inactivity)"]
-        TR["tracker.js (State Machine & Checkpointing)"]
-        IM["idle-manager.js (Idle Threshold Config)"]
-        AG["aggregation.js (Periodic Flush & Rollup)"]
-        DIAG["diagnostics.js (Bounded Buffer & Health Metrics)"]
+    subgraph BackgroundLayer["Background Service Worker (src/background/)"]
+        SW["service-worker.js<br/>(Idempotent Init & Message Router)"]
+        TM["tab-manager.js<br/>(Tab Lifecycle & Reconciliation)"]
+        TR["tracker.js<br/>(Serialized State Machine & Checkpointing)"]
+        IM["idle-manager.js<br/>(Idle Detection Config)"]
+        AG["aggregation.js<br/>(Periodic Flush & Weekly Rollup)"]
     end
 
-    subgraph ClassificationLayer["Classification Pipeline"]
-        CL["classifier.js (classify pipeline)"]
-        DN["domain-normalizer.js (URL parser & domain cleaner)"]
-        SR["site-rules.js (20+ site rules & page types)"]
+    subgraph ClassificationLayer["Classification & Cleanup (src/clustering/ & src/cleanup/)"]
+        CL["classifier.js<br/>(Domain Normalizer & 20+ Site Rules)"]
+        SG["suggestions.js<br/>(O(T+D) Decision-Weighted Ranking)"]
     end
 
-    subgraph StorageLayer["Persistence Layer"]
-        ST_Local["chrome.storage.local (Daily Usage, Settings & Diagnostics)"]
-        ST_Session["chrome.storage.session (Active Session Checkpoint & Inactivity)"]
+    subgraph PersistenceLayer["Local Persistence & Observability (src/storage/ & src/utils/)"]
+        ST["storage.js<br/>(WriteCoalescer & Dirty Cache)"]
+        DIAG["diagnostics.js<br/>(100-Event Rolling Buffer & Latency Percentiles)"]
+        LOCAL[("chrome.storage.local<br/>(Daily Usage, Settings, Decisions, Diagnostics)")]
+        SESS[("chrome.storage.session<br/>(Versioned Checkpoints & Tab Inactivity)")]
     end
 
-    subgraph UILayer["UI Surfaces"]
-        POP["Popup (Daily Snapshot)"]
-        DASH["Dashboard (Weekly Reports, Diagnostics & Settings)"]
-        CLEAN["Cleanup UI (Tab Review Engine)"]
+    subgraph UILayer["Extension UI Surfaces (src/popup/ & src/dashboard/)"]
+        POP["Popup UI<br/>(Daily Snapshot & Quick Cleanup)"]
+        DASH["Dashboard UI<br/>(Today, Weekly, Hygiene, Settings, Diagnostics)"]
     end
 
-    BE_Tabs --> SW
-    BE_Win --> SW
-    BE_Idle --> SW
-    BE_Alarm --> SW
+    E_Tabs --> SW
+    E_Win --> SW
+    E_Idle --> SW
+    E_Alarm --> SW
 
     SW --> TM
     SW --> IM
@@ -210,117 +91,201 @@ graph TD
 
     TM --> TR
     TM --> CL
-    CL --> DN
-    CL --> SR
+    TM --> SG
 
-    TR --> ST_Session
-    TR --> ST_Local
-    TR --> DIAG
-    TM --> ST_Session
-    AG --> ST_Local
-    DIAG --> ST_Local
+    TR --> ST
+    TM --> ST
+    AG --> ST
+    ST --> LOCAL
+    ST --> SESS
+    ST --> DIAG
+    DIAG --> LOCAL
 
-    POP -- "sendMessage" --> SW
-    DASH -- "sendMessage" --> SW
-    CLEAN -- "sendMessage" --> SW
+    POP -- "chrome.runtime.sendMessage" --> SW
+    DASH -- "chrome.runtime.sendMessage" --> SW
 ```
 
-### 2. Tracking State Machine & Service Worker Suspension Recovery
+### Component Responsibilities & Data Flow
 
-```mermaid
-graph TD
-    IN["INACTIVE"] -->|"tab activated + focused + active"| TRK["TRACKING"]
-    TRK -->|"pause / idle / window blur"| PSD["PAUSED"]
-    PSD -->|"resume / user return"| TRK
-    
-    TRK -->|"state change"| CP1["Checkpoint state & segments to chrome.storage.session"]
-    PSD -->|"state change"| CP2["Checkpoint state & segments to chrome.storage.session"]
-    
-    TRK -->|"Chrome SW Suspends"| SWS["Service Worker Killed (Memory Cleared)"]
-    PSD -->|"Chrome SW Suspends"| SWS
-    
-    SWS -->|"SW Wakes Up"| INIT["tracker.init() reads chrome.storage.session"]
-    INIT -->|"verify tab live"| TRK
-    
-    TRK -->|"end session / tab closed"| END["splitSessionSegmentsByDay() at Midnight"]
-    END -->|"flush daily seconds"| DB["chrome.storage.local (wt_daily_YYYY-MM-DD)"]
-```
+1. **Background Service Worker (`src/background/`):**
+   - [`service-worker.js`](src/background/service-worker.js): Registers Chrome event listeners, coordinates idempotent startup (`initialize()`), and routes asynchronous UI messages (`GET_TODAY_USAGE`, `GET_WEEKLY_DATA`, `GET_INACTIVE_TABS`, `CLOSE_TABS`, `KEEP_TABS`, `GET_DIAGNOSTICS`, `RECONCILE_TABS`).
+   - [`tracker.js`](src/background/tracker.js): Implements a deterministic state machine (`INACTIVE`, `TRACKING`, `PAUSED`) backed by a serialized FIFO promise queue (`_enqueue`). Prevents concurrent event interleaving, enforces at most one active session ($N_{\text{active}} \le 1$), splits sessions across midnight boundaries (`splitSessionSegmentsByDay`), and attaches monotonic `checkpointVersion` numbers.
+   - [`tab-manager.js`](src/background/tab-manager.js): Maintains the live tab map, tracks `inactiveSince` timestamps, responds to window focus and system idle transitions, and executes conservative runtime reconciliation (`reconcileTabs()`) to prune orphaned tab records.
+   - [`aggregation.js`](src/background/aggregation.js): Manages `chrome.alarms` (`wt_periodic_aggregation` every 5 minutes, `wt_hourly_maintenance` every 60 minutes) and aggregates daily records into weekly rollups.
+
+2. **Storage & Persistence (`src/storage/`):**
+   - [`storage.js`](src/storage/storage.js) & [`schema.js`](src/storage/schema.js): Wraps `chrome.storage.local` (daily summaries `wt_daily_YYYY-MM-DD`, user settings `wt_settings`, tab decisions `wt_tab_decisions`, diagnostics `wt_diagnostics`) and `chrome.storage.session` (active session checkpoints `wt_active_session` and tab inactivity `wt_tab_inactivity`).
+   - **Read-Your-Own-Writes Cache:** `getTabInactivity()` overlays pending in-memory coalesced updates onto persisted session state so callers always observe immediate consistency.
+
+3. **URL Clustering & Cleanup Engine (`src/clustering/`, `src/cleanup/`):**
+   - [`classifier.js`](src/clustering/classifier.js), [`domain-normalizer.js`](src/clustering/domain-normalizer.js), & [`site-rules.js`](src/clustering/site-rules.js): Normalizes hostnames, separates Google service subdomains (`mail.google.com`, `docs.google.com`, `drive.google.com`), categorizes 20+ known platforms with page-type matching, and filters internal browser URLs (`chrome://`, `chrome-extension://`, `about:`).
+   - [`suggestions.js`](src/cleanup/suggestions.js) & [`cleanup-ui.js`](src/cleanup/cleanup-ui.js): Computes domain keep ratios from stored user decisions in a single batch and renders the shared checkbox review interface.
+
+4. **Frontend UI (`src/popup/`, `src/dashboard/`):**
+   - [`popup.js`](src/popup/popup.js): Renders live tracking status, today's top categories, first-run onboarding overlay, and inline inactive tab review.
+   - [`dashboard.js`](src/dashboard/dashboard.js): Provides five view panels — **Today**, **Weekly** (with like-for-like partial-week comparisons), **Tab Hygiene**, **Settings** (thresholds, protected domain whitelist, storage usage), and **Diagnostics**.
 
 ---
 
-## Permissions Justification
+## Features and Engineering Capabilities
 
-Manifest V3 requires permissions to be explicitly declared. WebTrack requests only necessary permissions:
+| Capability | Implementation Mechanism | Failure & Privacy Handling |
+| :--- | :--- | :--- |
+| **Serialized State Machine & Checkpointing** | [`tracker.js`](src/background/tracker.js) serializes `init`, `startSession`, `pause`, `resume`, and `endSession` through `_enqueue()`. Checkpoints store `version`, `tabId`, `startTime`, and `segments` in `chrome.storage.session`. | Stale checkpoint writes with `version < lastAcknowledgedCheckpointVersion` are rejected. On service-worker wake-up, `chrome.tabs.get` verifies tab liveness before restoring or flushing. |
+| **Bounded Write Coalescing & Tab Reconciliation** | [`storage.js`](src/storage/storage.js) buffers `persistTabInactive` / `clearTabInactive` calls for `150ms` (up to `800ms` max hold). [`tab-manager.js`](src/background/tab-manager.js) reconciles tracked tabs against `chrome.tabs.query({})`. | If a storage write fails, dirty entries remain in memory for retry on the next flush. If `chrome.tabs.query` throws, `reconcileTabs()` aborts conservatively without deleting tracked state. |
+| **Decision-Weighted Tab Cleanup** | [`suggestions.js`](src/cleanup/suggestions.js) aggregates historical decisions in $O(D)$ (`aggregateDomainDecisions`) and ranks candidate tabs in $O(T)$ (`rankCleanupCandidates`). Suppresses domains with $\ge 80\%$ keep ratio once $\ge 5$ decisions exist. | Protected domains (`protectedDomains`), pinned tabs, and audible tabs are filtered first with zero false suppression. Domains with $< 5$ decisions are never suppressed prematurely. |
+| **Midnight-Accurate & Like-for-Like Analytics** | [`time-format.js`](src/utils/time-format.js) splits active segments spanning `00:00:00` local time across calendar dates (`splitSegmentByDay`). Weekly reports compare identical elapsed weekdays. | Prevents multi-hour overnight sessions from skewing a single day and eliminates artificial week-over-week percentage drops early in the week. |
+| **Local Extension Health Diagnostics** | [`diagnostics.js`](src/utils/diagnostics.js) records service-worker recovery outcomes, storage write latencies (`p50`/`p95`), and deduplicated runtime error counts in a 100-event FIFO rolling buffer. | `sanitizeText()` strips URLs, domain names, and paths before storage (`[redacted_url]`, `[redacted_domain]`). Persistence is guarded against recursion and never blocks tracking. |
 
-| Permission | Reason |
-| :--- | :--- |
-| `tabs` | Required to read active tab domain/category for tracking and track tab inactivity timestamps for cleanup suggestions. Data stays 100% local. |
-| `storage` | Required to persist settings, daily summaries (`chrome.storage.local`), active session checkpoints (`chrome.storage.session`), and local diagnostics buffer (`wt_diagnostics`). |
-| `idle` | Required to detect system idle state and pause tracking automatically when away from keyboard/mouse. |
-| `alarms` | Required to schedule periodic data flushes (every 5 minutes) and hourly maintenance. |
+### Scope Note (Implemented vs. Maintenance Lifecycle)
+- **Implemented:** Event-driven tracking, monotonic session checkpointing, bounded write coalescing, runtime tab reconciliation, $O(T + D)$ decision-weighted cleanup suggestions, daily/weekly reports, and local health diagnostics.
+- **Current Retention Behavior:** `checkDayRollover()` in [`aggregation.js`](src/background/aggregation.js) defines the 90-day retention boundary (`DATA_RETENTION_DAYS = 90`); users can also clear all stored tracking or diagnostic data at any time from the Dashboard.
 
-For detailed security information, see [PRIVACY.md](./PRIVACY.md).
+---
+
+## Technology Stack
+
+- **Runtime & Language:** JavaScript (ES2022+ ES Modules), HTML5, CSS3
+- **Extension Platform:** Chrome Extensions Manifest V3 (`service_worker`, `chrome.tabs`, `chrome.windows`, `chrome.idle`, `chrome.alarms`, `chrome.storage.local`, `chrome.storage.session`)
+- **Unit, Concurrency & Coverage Testing:** Node.js native test runner (`node:test`, `node:assert/strict`, `--experimental-test-coverage`) with custom Chrome API mocks ([`tests/mock-chrome.mjs`](tests/mock-chrome.mjs))
+- **Browser Automation & E2E Testing:** Playwright (`playwright` `^1.64.1`) running headless Chromium
+- **CI/CD:** GitHub Actions (`.github/workflows/test.yml`)
+
+---
+
+## CI/CD and Quality Assurance
+
+Continuous integration is defined in [`.github/workflows/test.yml`](.github/workflows/test.yml) (**WebTrack CI Test Suite**) with least-privilege `contents: read` permissions and explicit job timeouts.
+
+```mermaid
+flowchart LR
+    Trigger["Push / PR<br/>(main, master, feature/**)"] --> Unit["Job: test<br/>Node 20.x & 22.x<br/>(npm test)"]
+    Unit --> Cov["Job: coverage<br/>Node 22.x<br/>(npm run test:coverage + Artifact)"]
+    Unit --> E2E["Job: e2e<br/>Node 22.x + Playwright Chromium<br/>(dashboard-diagnostics.test.mjs)"]
+    Sched["Schedule (Weekly)<br/>or workflow_dispatch"] --> Unit
+    Unit -. "schedule / manual only" .-> Acc["Job: accuracy-benchmark<br/>Node 22.x + Playwright Chromium<br/>(browser-accuracy.benchmark.mjs)"]
+```
+
+### Pipeline Stages
+
+1. **Unit, Concurrency & Storage Tests (`test`):** Runs across Node.js `20.x` and `22.x` on `ubuntu-latest` (`timeout-minutes: 10`). Executes `npm ci` and `npm test`, validating classifier rules, midnight session splitting, weekly aggregation, tracker concurrency invariants, storage write coalescing, decision-weighted cleanup ranking, diagnostics buffer bounds, and synthetic benchmarks.
+2. **Test Coverage & Quality Gates (`coverage`):** Runs on Node.js `22.x` after `test` succeeds. Executes `npm run test:coverage` and uploads `coverage-report-node22` (`retention-days: 14`).
+3. **Playwright UI Critical Path Tests (`e2e`):** Runs on Node.js `22.x` after `test` succeeds (`timeout-minutes: 10`). Installs Playwright-managed Chromium (`npx playwright install --with-deps chromium`) and executes [`tests/playwright/dashboard-diagnostics.test.mjs`](tests/playwright/dashboard-diagnostics.test.mjs) against an ephemeral local HTTP server with guaranteed `try / finally` and `t.after()` socket/browser teardown.
+4. **Ground-Truth Browser Accuracy Benchmark (`accuracy-benchmark`):** Triggered via weekly cron schedule (`0 3 * * 1`) or manual `workflow_dispatch` (`timeout-minutes: 15`). Runs the 10-iteration controlled 90-second browser accuracy benchmark ([`tests/playwright/browser-accuracy.benchmark.mjs`](tests/playwright/browser-accuracy.benchmark.mjs)) and archives `accuracy-benchmark-log`.
+
+---
+
+## Documentation and Repository Navigation
+
+| Resource | Link / Location | Description |
+| :--- | :--- | :--- |
+| **GitHub Repository** | [github.com/Bhavadharani412/Web-Usage-Tracker](https://github.com/Bhavadharani412/Web-Usage-Tracker) | Source code, branches, and releases |
+| **DeepWiki Documentation** | [deepwiki.com/Bhavadharani412/Web-Usage-Tracker](https://deepwiki.com/Bhavadharani412/Web-Usage-Tracker) | AI-indexed architectural documentation and module exploration |
+| **GitHub Wiki** | [github.com/Bhavadharani412/Web-Usage-Tracker/wiki](https://github.com/Bhavadharani412/Web-Usage-Tracker/wiki) | Repository wiki and supplementary guides |
+| **CI Workflow Runs** | [Actions — WebTrack CI Test Suite](https://github.com/Bhavadharani412/Web-Usage-Tracker/actions/workflows/test.yml) | Live execution logs and coverage/benchmark artifacts |
+| **Issue Tracker** | [GitHub Issues](https://github.com/Bhavadharani412/Web-Usage-Tracker/issues) | Bug reports, feature requests, and engineering roadmap |
+| **Engineering Specs & Reports** | [`docs/engineering/`](docs/engineering/) | [`BASELINE_AUDIT.md`](docs/engineering/BASELINE_AUDIT.md), [`IMPLEMENTATION_PLAN.md`](docs/engineering/IMPLEMENTATION_PLAN.md), [`TEST_STRATEGY.md`](docs/engineering/TEST_STRATEGY.md), [`ACCURACY_REPORT.md`](docs/engineering/ACCURACY_REPORT.md), [`ADR_001_COORDINATED_HARDENING.md`](docs/engineering/ADR_001_COORDINATED_HARDENING.md) |
+| **Privacy & Contribution** | [`PRIVACY.md`](PRIVACY.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md) | Local-first privacy commitments, permissions, and contributor workflow |
+
+---
+
+## Installation and Local Development
+
+### Prerequisites
+
+- **Node.js:** `v20.x` or `v22.x`+ (with `npm`)
+- **Browser:** Google Chrome or Chromium (`Manifest V3` support)
+- **Git**
+
+### 1. Clone and Install Dependencies
+
+```bash
+git clone https://github.com/Bhavadharani412/Web-Usage-Tracker.git
+cd Web-Usage-Tracker
+npm ci
+```
+
+*(No environment variables, external API keys, or build/transpilation steps are required; the extension runs native ES modules directly).*
+
+### 2. Install Playwright Chromium (For UI & Accuracy Tests)
+
+```bash
+npx playwright install chromium
+```
+
+### 3. Load Unpacked Extension in Chrome
+
+1. Open Chrome and navigate to `chrome://extensions/`.
+2. Enable **Developer mode** in the top-right corner.
+3. Click **Load unpacked** and select the root `Web-Usage-Tracker` directory (containing [`manifest.json`](manifest.json)).
+4. Pin **WebTrack** to the Chrome toolbar to access the popup and dashboard.
 
 ---
 
 ## Project Structure
 
-```
-web-usage-tracker/
-├── manifest.json                  # Manifest V3 config (Chrome target)
-├── package.json                   # NPM package definition & test script
-├── PRIVACY.md                     # Privacy Policy & permission justifications
-├── .github/workflows/test.yml     # Automated CI test runner workflow
-├── docs/engineering/              # Engineering specifications, audits, ADRs & reports
-│   ├── BASELINE_AUDIT.md          # Pre-implementation baseline & failure-mode audit
-│   ├── IMPLEMENTATION_PLAN.md     # Coordinated architectural implementation plan
-│   ├── TEST_STRATEGY.md           # Multi-layer test & coverage strategy
-│   ├── ACCURACY_REPORT.md         # 10-run real-browser ground-truth benchmark report
-│   ├── ADR_001_COORDINATED_HARDENING.md # Architecture Decision Record 001
-│   └── PROGRESS.md                # Milestone & commit traceability log
-├── assets/                        # Extension icons
+```text
+Web-Usage-Tracker/
+├── .github/workflows/
+│   └── test.yml                  # CI pipeline (Unit, Coverage, Playwright E2E, Accuracy Benchmark)
+├── assets/                       # Extension icons (16px, 48px, 128px)
+├── docs/engineering/             # Engineering audits, ADRs, test strategy, and accuracy reports
 ├── src/
-│   ├── background/                # Service worker + tracking engine
-│   │   ├── service-worker.js      # Entry point, idempotent init
-│   │   ├── tracker.js             # Deterministic state machine + FIFO queue + monotonic checkpointing
-│   │   ├── tab-manager.js         # Tab lifecycle, inactivity tracking & runtime reconciliation
-│   │   ├── idle-manager.js        # chrome.idle integration
-│   │   └── aggregation.js         # Periodic flush & hourly maintenance
-│   ├── clustering/                # URL classification
-│   │   ├── domain-normalizer.js   # URL parsing & domain normalizer
-│   │   ├── site-rules.js          # Per-site display names & page types
-│   │   └── classifier.js          # Main classify(url) pipeline
-│   ├── storage/                   # Persistence layer
-│   │   ├── storage.js             # Bounded write coalescer, dirty cache & latency timing
-│   │   └── schema.js              # Data models & defaults
-│   ├── cleanup/                   # Tab cleanup engine
-│   │   ├── suggestions.js         # O(T+D) decision-weighted candidate ranking
-│   │   └── cleanup-ui.js          # Shared review UI rendering
-│   ├── popup/                     # Daily snapshot popup
-│   ├── dashboard/                 # Weekly reports, diagnostics & settings
-│   └── utils/                     # Shared utilities & observability
-│       ├── diagnostics.js         # Diagnostics manager & bounded rolling buffer (100 cap)
-│       ├── browser-adapter.js     # Browser API compatibility shim
-│       └── time-format.js         # Time math & date helpers
-└── tests/                         # Native node:test suite & benchmarks
-    ├── mock-chrome.mjs            # Chrome API mock environment
-    ├── tracker.test.mjs           # State machine & suspension recovery tests
-    ├── tracker-concurrency.test.mjs # Concurrency, idempotency & checkpoint versioning tests
-    ├── storage.test.mjs           # Write coalescing, cache consistency & reconciliation tests
-    ├── cleanup-suggestions.test.mjs # O(T+D) decision weighting & protected-domain tests
-    ├── classifier.test.mjs        # Classifier table tests
-    ├── week-math.test.mjs         # Midnight split & like-for-like week math tests
-    ├── aggregation.test.mjs       # Weekly rollup tests
-    ├── browser-compat.test.mjs    # Compatibility shim tests
-    ├── diagnostics.test.mjs       # Diagnostics buffer, eviction, percentiles & errors
-    ├── benchmarks.test.mjs        # Stopwatch, suspension, diagnostics & write-batching benchmarks
-    └── playwright/                # Browser UI & accuracy Playwright suite
-        ├── dashboard-diagnostics.test.mjs # Rendered dashboard diagnostics verification
-        └── browser-accuracy.benchmark.mjs # 10-run real-browser 90s ground-truth benchmark
+│   ├── background/               # Service worker entry point, state machine, tab & idle managers, aggregation
+│   ├── cleanup/                  # O(T+D) decision-weighted suggestion engine & shared review UI
+│   ├── clustering/               # Domain normalizer, 20+ site classification rules, URL classifier
+│   ├── dashboard/                # Full-page analytics, tab hygiene, settings, and diagnostics UI
+│   ├── popup/                    # Toolbar popup snapshot, onboarding overlay, and quick cleanup UI
+│   ├── storage/                  # Chrome storage wrapper, bounded WriteCoalescer, and data schemas
+│   └── utils/                    # Local health diagnostics manager, browser adapter, and date/time math
+├── tests/
+│   ├── playwright/               # Real-browser Playwright UI tests and 90s ground-truth accuracy harness
+│   └── *.test.mjs                # Node.js unit, concurrency, storage, classifier, and benchmark suites
+├── CONTRIBUTING.md               # Development and pull request guidelines
+├── PRIVACY.md                    # Privacy policy and Chrome permission justifications
+├── manifest.json                 # Chrome Manifest V3 extension configuration
+└── package.json                  # Scripts and Playwright devDependency
 ```
+
+---
+
+## Testing and Contribution
+
+### Test Commands
+
+All scripts in [`package.json`](package.json) are verified against the Node.js test runner and Playwright:
+
+```bash
+# Run all unit, concurrency, storage, cleanup, and synthetic benchmark suites (52 tests)
+npm test
+
+# Run unit, concurrency, storage, and cleanup tests without synthetic benchmarks
+npm run test:unit
+
+# Run test suite with line and branch coverage reporting
+npm run test:coverage
+
+# Run Playwright dashboard diagnostics E2E UI tests
+npm run test:e2e
+
+# Run 10-iteration real-browser ground-truth accuracy benchmark
+npm run test:accuracy
+
+# Run both synthetic and real-browser benchmarks
+npm run test:benchmarks
+```
+
+### Contributing
+
+Contributions that improve tracking accuracy, storage efficiency, accessibility, or test coverage are welcome:
+
+1. Review [`CONTRIBUTING.md`](CONTRIBUTING.md) and check open [GitHub Issues](https://github.com/Bhavadharani412/Web-Usage-Tracker/issues).
+2. Create a focused branch (`git checkout -b fix/your-change` or `feat/your-feature`).
+3. Ensure all changes preserve WebTrack's local-first privacy guarantees (no external network requests or URL leakage).
+4. Run `npm test` and `npm run test:e2e` locally and verify all tests pass before opening a pull request.
 
 ---
 
 ## License
 
-MIT
+Released under the [MIT License](LICENSE).
