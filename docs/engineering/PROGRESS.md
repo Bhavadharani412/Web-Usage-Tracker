@@ -14,7 +14,7 @@
 | **2. Milestone 2** | Issue #5: Storage Batching & Tab Lifecycle Reconciliation | **Complete** | `eabfdbd` | `src/storage/storage.js`, `src/background/tab-manager.js`, `tests/storage.test.mjs`, `tests/benchmarks.test.mjs` |
 | **3. Milestone 3** | Issue #8: Decision-Weighted Cleanup Suggestions | **Complete** | `8c33462` | `src/cleanup/suggestions.js`, `src/background/tab-manager.js`, `tests/cleanup-suggestions.test.mjs` |
 | **4. Milestone 4** | Issue #7: Ground-Truth Browser Accuracy Benchmarks | **Complete** | `ccf7db4` | `tests/playwright/browser-accuracy.benchmark.mjs`, `docs/engineering/ACCURACY_REPORT.md` |
-| **5. Milestone 5** | CI/CD Hardening, Final Verification & Documentation | **Complete** | Final commit | `.github/workflows/test.yml`, `package.json`, `README.md`, `docs/engineering/ADR_001_COORDINATED_HARDENING.md` |
+| **5. Milestone 5** | CI/CD Hardening, Final Verification & Documentation | **Complete** | `bb401c6` | `.github/workflows/test.yml`, `package.json`, `README.md`, `docs/engineering/ADR_001_COORDINATED_HARDENING.md` |
 
 ---
 
