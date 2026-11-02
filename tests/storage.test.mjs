@@ -357,3 +357,107 @@ test('Issue #5 — Storage Adapter Fallbacks under API degradation', async () =>
   chrome.storage.session.set = origSessionSet;
 });
 
+test('Issue #5 & #8 — Tab Manager Lifecycle Events, Focus, Idle, and Inactive Tab Ranking', async () => {
+  mockEnv.reset();
+  await flushPendingWrites();
+  resetStorageWriteMetrics();
+  tabManager._clearTabsForTest();
+
+  const now = Date.now();
+  await persistTabInactive(10, now - 120000);
+  await persistTabInactive(888, now - 120000); // Stale tab in storage!
+  await flushPendingWrites();
+
+  // Initialize tab manager with live tabs 10 (inactive) and 20 (active)
+  chrome.tabs.query = async (queryInfo) => {
+    if (queryInfo && queryInfo.active) {
+      return [{ id: 20, url: 'https://github.com/repo', active: true, windowId: 1 }];
+    }
+    return [
+      { id: 10, url: 'https://reddit.com/r/javascript', title: 'Reddit JS', active: false, windowId: 1 },
+      { id: 20, url: 'https://github.com/repo', title: 'GitHub Repo', active: true, windowId: 1 },
+      { id: 30, url: 'chrome://extensions', title: 'Extensions', active: false, windowId: 1 }
+    ];
+  };
+  chrome.tabs.get = async (tabId) => ({
+    id: tabId,
+    url: `https://site-${tabId}.com/page`,
+    title: `Site ${tabId}`,
+    active: true,
+    windowId: 1
+  });
+
+  await tabManager.init();
+  assert.equal(tabManager.getOpenTabCount(), 2); // Tab 30 is internal, skipped
+  assert.equal(tabManager.isActiveTab(20), true);
+  assert.equal(tabManager.getActiveTabInstance().browserTabId, 20);
+
+  // Test onTabCreated (background tab)
+  await tabManager.onTabCreated({
+    id: 40,
+    url: 'https://news.ycombinator.com',
+    title: 'HN',
+    active: false,
+    windowId: 1
+  });
+  assert.equal(tabManager.getOpenTabCount(), 3);
+
+  // Test onTabActivated for existing tab (10) and unseen tab (50)
+  await tabManager.onTabActivated({ tabId: 10, windowId: 1 });
+  assert.equal(tabManager.isActiveTab(10), true);
+  await tabManager.onTabActivated({ tabId: 50, windowId: 1 });
+  assert.equal(tabManager.isActiveTab(50), true);
+
+  // Test onTabUpdated (URL change on active tab, URL change on background tab, title/pinned/audible updates)
+  await tabManager.onTabUpdated(50, {
+    url: 'https://leetcode.com/problems/two-sum',
+    title: 'Two Sum',
+    pinned: true,
+    audible: true
+  }, { id: 50, url: 'https://leetcode.com/problems/two-sum' });
+
+  await tabManager.onTabUpdated(20, {
+    url: 'https://github.com/pulls',
+    title: 'Pull Requests',
+    pinned: false,
+    audible: false
+  }, { id: 20, url: 'https://github.com/pulls' });
+
+  // Unseen tab update
+  await tabManager.onTabUpdated(60, {
+    url: 'https://stackoverflow.com/questions'
+  }, { id: 60, url: 'https://stackoverflow.com/questions', title: 'SO' });
+
+  // Test onWindowFocusChanged (lose focus -> pause, regain focus -> resume)
+  await tabManager.onWindowFocusChanged(chrome.windows.WINDOW_ID_NONE);
+  await tabManager.onWindowFocusChanged(1);
+
+  // Test onIdleStateChanged (idle -> pause, active -> resume)
+  tabManager.onIdleStateChanged('idle');
+  tabManager.onIdleStateChanged('active');
+
+  // Test getInactiveTabs with threshold
+  // Artificially age tab 40's inactiveSince
+  const allTabs = tabManager.getAllTrackedTabs();
+  const tab40 = allTabs.find((t) => t.browserTabId === 40);
+  if (tab40) {
+    tab40.inactiveSince = Date.now() - 60 * 60 * 1000; // 60 mins ago
+  }
+  const inactiveCandidates = await tabManager.getInactiveTabs(30);
+  assert.equal(inactiveCandidates.length, 1);
+  assert.equal(inactiveCandidates[0].browserTabId, 40);
+
+  // Test onTabRemoved
+  await tabManager.onTabRemoved(20); // Active tab removed
+  assert.equal(tabManager.getActiveTabInstance(), null);
+  await tabManager.onTabRemoved(40);
+
+  // Test reconcileTabs when activeTabId is no longer in live tabs
+  await tabManager.onTabActivated({ tabId: 50, windowId: 1 });
+  chrome.tabs.query = async () => [{ id: 10, url: 'https://reddit.com' }]; // Tab 50 disappeared!
+  const recon = await tabManager.reconcileTabs();
+  assert.ok(recon.staleMemoryRemoved >= 1);
+  assert.equal(tabManager.getActiveTabInstance(), null);
+});
+
+

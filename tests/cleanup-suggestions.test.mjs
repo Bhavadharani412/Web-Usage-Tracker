@@ -289,13 +289,51 @@ test('Issue #8 — UI Helper Functions (getCleanupCandidates, closeTabs, keepTab
   assert.deepEqual(noApiCandidates, []);
   chrome.runtime.sendMessage = origSendMessage;
 
-  // Options branch: ignorePinnedTabs = false
-  const pinnedCandidate = [
-    { browserTabId: 50, domain: 'example.com', isPinned: true, isAudible: true, inactiveSince: 100 }
+  // Options branch: ignorePinnedTabs = false and edge cases in aggregateDomainDecisions / rankCleanupCandidates
+  const edgeDecisions = aggregateDomainDecisions('not-an-array');
+  assert.equal(edgeDecisions.size, 0);
+
+  const mixedInvalidDecisions = aggregateDomainDecisions([
+    null,
+    { domain: 123, action: 'keep' },
+    { domain: '   ', action: 'keep' },
+    { domain: 'valid.com', action: 'unknown_action' }
+  ]);
+  assert.equal(mixedInvalidDecisions.get('valid.com').total, 0);
+  assert.equal(mixedInvalidDecisions.get('valid.com').keepRatio, 0);
+
+  const preAggregatedMap = aggregateDomainDecisions([
+    { domain: 'sub.example.com', action: 'keep' },
+    { domain: 'sub.example.com', action: 'keep' },
+    { domain: 'sub.example.com', action: 'keep' },
+    { domain: 'sub.example.com', action: 'keep' },
+    { domain: 'sub.example.com', action: 'keep' }
+  ]);
+
+  const mixedCandidates = [
+    null,
+    { browserTabId: 50, domain: 'example.com', isPinned: true, isAudible: true, inactiveSince: 100 },
+    { browserTabId: 51, domain: 'example.com', isPinned: true, isAudible: false, inactiveSince: 150 },
+    { browserTabId: 52, domain: 'example.com', isPinned: false, isAudible: true, inactiveSince: 160 },
+    { browserTabId: 53, domain: 'internal', isInternal: true, inactiveSince: 170 },
+    { browserTabId: 54, domain: '', hostname: 'sub.example.com', inactiveSince: 180 },
+    { browserTabId: 55, domain: 'notime1.com' },
+    { browserTabId: 56, domain: 'notime2.com' }
   ];
-  const rankedWithPinned = rankCleanupCandidates(pinnedCandidate, [], {
-    ignorePinnedTabs: false,
-    ignoreAudibleTabs: false
+
+  // Filter with default pinned/audible protection and pre-aggregated Map
+  const filteredDefault = rankCleanupCandidates(mixedCandidates, preAggregatedMap, {
+    protectedDomains: null
   });
+  assert.equal(filteredDefault.length, 2); // Only 55 and 56 remain (50,51,52 pinned/audible, 53 internal, 54 suppressed via hostname)
+
+  const rankedWithPinned = rankCleanupCandidates(
+    [{ browserTabId: 50, domain: 'example.com', isPinned: true, isAudible: true, inactiveSince: 100 }],
+    [],
+    {
+      ignorePinnedTabs: false,
+      ignoreAudibleTabs: false
+    }
+  );
   assert.equal(rankedWithPinned.length, 1);
 });

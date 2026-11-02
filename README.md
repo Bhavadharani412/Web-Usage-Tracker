@@ -8,6 +8,10 @@ A privacy-first Manifest V3 Chrome extension that tracks your actual active brow
 
 ## Key Architectural Highlights & Improvements
 
+- **Deterministic State Machine & Concurrency Safety (Issue #6):** All tracker state transitions (`INACTIVE`, `TRACKING`, `PAUSED`) execute through a serialized FIFO promise queue (`_enqueue`), guaranteeing at most one active session ($N_{\text{active}} \le 1$), idempotent duplicate-event handling, and monotonic checkpoint versioning (`checkpointVersion`) that prevents stale checkpoint overwrites.
+- **Bounded Storage Write Coalescing & Tab Reconciliation (Issue #5):** In-memory dirty buffering coalesces rapid `chrome.storage.session` tab inactivity mutations with a 150ms debounce window and 800ms maximum hold bound, achieving a **99.95% reduction in physical storage writes** under 1,000 rapid tab switches while maintaining 100% read-your-own-writes consistency. Includes conservative runtime `reconcileTabs()` recovery.
+- **Decision-Weighted Cleanup Engine (Issue #8):** Batches historical user keep/close decisions in $O(T + D)$ complexity (`aggregateDomainDecisions` and `rankCleanupCandidates`). Suppresses domains with $\ge 80\%$ keep ratio (minimum 5 samples) while strictly enforcing protected-domain, pinned-tab, and audible-tab precedence with zero false suppression.
+- **Empirical Ground-Truth Browser Accuracy (Issue #7):** Validated across 10 real-browser Playwright executions of a 90-second controlled multi-phase timeline, achieving **0.0000s Mean Absolute Error (MAE)** and **0.0000s Median Absolute Error (MedAE)** ([ACCURACY_REPORT.md](./docs/engineering/ACCURACY_REPORT.md)).
 - **Service-Worker Suspension Survival:** Active tracking sessions checkpoint state (`tabId`, `startTime`, `accumulatedSeconds`, `segments`) to `chrome.storage.session` on every state transition (`startSession`, `pause`, `resume`). When Chrome suspends the background service worker, un-flushed tracking state is automatically restored on worker wake-up with zero data loss.
 - **Local Extension Health Diagnostics:** Modular, lightweight health observability manager recording service worker recovery success rates, storage write latency distribution (p50/p95), and deduplicated runtime error counts into a bounded 100-entry rolling buffer with zero browsing URL leakage and negligible overhead (~15 µs/event).
 - **Exact Midnight Session Splitting:** Sessions spanning midnight (e.g. 11:45 PM to 00:15 AM) are automatically split across calendar day boundaries so each day receives its precise credited duration.
@@ -79,11 +83,17 @@ WebTrack includes comprehensive automated tests built on Node.js' native test ru
 ### Run Test Suite & Benchmarks
 
 ```bash
-# Run unit & integration test suite with benchmarks
+# Run full unit, concurrency, storage, cleanup & synthetic benchmark suite
 npm test
 
-# Run Playwright browser UI tests (Chromium / Chrome)
-npm run test:e2e
+# Run test suite with line & branch code coverage analysis
+npm run test:coverage
+
+# Run Playwright browser UI critical path tests
+node --test tests/playwright/dashboard-diagnostics.test.mjs
+
+# Run 10-run real-browser ground-truth accuracy benchmark (90s controlled timeline)
+npm run test:accuracy
 ```
 
 ### Test Coverage
@@ -91,13 +101,17 @@ npm run test:e2e
 | Test File | Scope |
 | :--- | :--- |
 | `tests/tracker.test.mjs` | Tracker state machine, state persistence, service-worker suspension recovery |
+| `tests/tracker-concurrency.test.mjs` | State transition matrix, serialized event queue, rapid tab activations, duplicate session prevention, monotonic checkpoint versioning, stale checkpoint rejection (Issue #6) |
+| `tests/storage.test.mjs` | Bounded write coalescing, read-your-own-writes consistency, failed write retry retention, stale-tab reconciliation, conservative API failure handling (Issue #5) |
+| `tests/cleanup-suggestions.test.mjs` | $O(T + D)$ batched decision aggregation, keep ratio suppression ($\ge 80\%$, sample $\ge 5$), protected-domain precedence, scale testing (Issue #8) |
 | `tests/classifier.test.mjs` | Table tests for URL classification, site rules, page types, Google subdomains, edge cases |
 | `tests/week-math.test.mjs` | Date math, Monday-based week ranges, midnight session splitting, like-for-like week math |
 | `tests/aggregation.test.mjs` | Weekly rollup calculations & daily breakdown aggregation |
 | `tests/browser-compat.test.mjs` | Browser API adapter fallbacks |
 | `tests/diagnostics.test.mjs` | Rolling event buffer capacity (100 cap), FIFO eviction, p50/p95 latency percentiles, SW recovery rate, runtime error deduplication, privacy constraints, corrupted storage resilience |
-| `tests/benchmarks.test.mjs` | Stopwatch accuracy benchmark (0.00% drift), forced suspension recovery benchmark (0s loss), and diagnostics instrumentation overhead (1,000 events) |
+| `tests/benchmarks.test.mjs` | Stopwatch accuracy benchmark (0.00% drift), forced suspension recovery benchmark (0s loss), diagnostics instrumentation overhead (1,000 events), and storage write coalescing benchmark (1,000 rapid switch events — 99.95% reduction) |
 | `tests/playwright/dashboard-diagnostics.test.mjs` | Rendered dashboard UI: empty state, populated metrics, privacy verification, user clear-history action, and corrupt data handling |
+| `tests/playwright/browser-accuracy.benchmark.mjs` | Real-browser 90-second controlled multi-phase ground-truth benchmark across 10 valid runs (Issue #7) |
 
 ### Benchmark Results
 
@@ -123,6 +137,24 @@ Overhead Per Event     : 15.87 µs (0.0159 ms)
 Buffer Retained / Cap  : 100 / 100
 Storage Latency p50    : 2.13 ms
 Storage Latency p95    : 3.25 ms
+
+--- Storage Write Coalescing Benchmark (1,000 Switch Events) ---
+Rapid Switch Events    : 1000
+Baseline Storage Writes: 2000
+Optimized Writes       : 1
+Write Reduction        : 99.95% (Target: >= 35.00%)
+Pending Writes Flushed : 0 (Clean)
+Reconciled Live Tabs   : 1
+Stale Tabs Pruned      : 8
+Data Loss Rate         : 0.0000%
+
+--- Real-Browser Ground-Truth Accuracy (10 Executions, 90s Scenario) ---
+Valid Recorded Runs    : 10 (0 Failures)
+Ground Truth Active    : 75.0s (90.0s Total Elapsed)
+Mean Absolute Error    : 0.0000s (Target: < 5.0s)
+Median Absolute Error  : 0.0000s (Target: < 2.0s)
+Mean Percentage Error  : 0.0000% (Target: < 2.0%)
+Duplicate Time         : 0.0000s
 ```
 
 ---
@@ -239,12 +271,19 @@ web-usage-tracker/
 ├── package.json                   # NPM package definition & test script
 ├── PRIVACY.md                     # Privacy Policy & permission justifications
 ├── .github/workflows/test.yml     # Automated CI test runner workflow
+├── docs/engineering/              # Engineering specifications, audits, ADRs & reports
+│   ├── BASELINE_AUDIT.md          # Pre-implementation baseline & failure-mode audit
+│   ├── IMPLEMENTATION_PLAN.md     # Coordinated architectural implementation plan
+│   ├── TEST_STRATEGY.md           # Multi-layer test & coverage strategy
+│   ├── ACCURACY_REPORT.md         # 10-run real-browser ground-truth benchmark report
+│   ├── ADR_001_COORDINATED_HARDENING.md # Architecture Decision Record 001
+│   └── PROGRESS.md                # Milestone & commit traceability log
 ├── assets/                        # Extension icons
 ├── src/
 │   ├── background/                # Service worker + tracking engine
 │   │   ├── service-worker.js      # Entry point, idempotent init
-│   │   ├── tracker.js             # State machine + session checkpointing + midnight split
-│   │   ├── tab-manager.js         # Tab lifecycle & inactivity tracking
+│   │   ├── tracker.js             # Deterministic state machine + FIFO queue + monotonic checkpointing
+│   │   ├── tab-manager.js         # Tab lifecycle, inactivity tracking & runtime reconciliation
 │   │   ├── idle-manager.js        # chrome.idle integration
 │   │   └── aggregation.js         # Periodic flush & hourly maintenance
 │   ├── clustering/                # URL classification
@@ -252,10 +291,10 @@ web-usage-tracker/
 │   │   ├── site-rules.js          # Per-site display names & page types
 │   │   └── classifier.js          # Main classify(url) pipeline
 │   ├── storage/                   # Persistence layer
-│   │   ├── storage.js             # chrome.storage.local & session wrapper with latency timing
+│   │   ├── storage.js             # Bounded write coalescer, dirty cache & latency timing
 │   │   └── schema.js              # Data models & defaults
 │   ├── cleanup/                   # Tab cleanup engine
-│   │   ├── suggestions.js         # Candidate calculation
+│   │   ├── suggestions.js         # O(T+D) decision-weighted candidate ranking
 │   │   └── cleanup-ui.js          # Shared review UI rendering
 │   ├── popup/                     # Daily snapshot popup
 │   ├── dashboard/                 # Weekly reports, diagnostics & settings
@@ -266,14 +305,18 @@ web-usage-tracker/
 └── tests/                         # Native node:test suite & benchmarks
     ├── mock-chrome.mjs            # Chrome API mock environment
     ├── tracker.test.mjs           # State machine & suspension recovery tests
+    ├── tracker-concurrency.test.mjs # Concurrency, idempotency & checkpoint versioning tests
+    ├── storage.test.mjs           # Write coalescing, cache consistency & reconciliation tests
+    ├── cleanup-suggestions.test.mjs # O(T+D) decision weighting & protected-domain tests
     ├── classifier.test.mjs        # Classifier table tests
     ├── week-math.test.mjs         # Midnight split & like-for-like week math tests
     ├── aggregation.test.mjs       # Weekly rollup tests
     ├── browser-compat.test.mjs    # Compatibility shim tests
     ├── diagnostics.test.mjs       # Diagnostics buffer, eviction, percentiles & errors
-    ├── benchmarks.test.mjs        # Stopwatch drift, suspension recovery & diagnostics overhead benchmarks
-    └── playwright/                # Browser UI Playwright test suite
-        └── dashboard-diagnostics.test.mjs # Rendered dashboard diagnostics verification
+    ├── benchmarks.test.mjs        # Stopwatch, suspension, diagnostics & write-batching benchmarks
+    └── playwright/                # Browser UI & accuracy Playwright suite
+        ├── dashboard-diagnostics.test.mjs # Rendered dashboard diagnostics verification
+        └── browser-accuracy.benchmark.mjs # 10-run real-browser 90s ground-truth benchmark
 ```
 
 ---
