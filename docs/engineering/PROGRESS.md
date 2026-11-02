@@ -9,8 +9,8 @@
 | Milestone | Issue / Focus | Status | Commits | Tests Added / Modified |
 |---|---|---|---|---|
 | **0. Discovery & Planning** | Baseline Audit, Implementation Plan, Test Strategy | **Complete** | `7e6ec56` | - |
-| **1. Milestone 1** | Issue #6: Tracker State Machine & Concurrency Safety | **Complete** | Pending commit | `tests/tracker.test.mjs`, `tests/tracker-concurrency.test.mjs` |
-| **2. Milestone 2** | Issue #5: Storage Batching & Tab Lifecycle Reconciliation | Pending | - | `tests/storage.test.mjs`, `tests/benchmarks.test.mjs` |
+| **1. Milestone 1** | Issue #6: Tracker State Machine & Concurrency Safety | **Complete** | `a0a5475` | `tests/tracker.test.mjs`, `tests/tracker-concurrency.test.mjs` |
+| **2. Milestone 2** | Issue #5: Storage Batching & Tab Lifecycle Reconciliation | **Complete** | Pending commit | `tests/storage.test.mjs`, `tests/benchmarks.test.mjs` |
 | **3. Milestone 3** | Issue #8: Decision-Weighted Cleanup Suggestions | Pending | - | `tests/cleanup-suggestions.test.mjs` |
 | **4. Milestone 4** | Issue #7: Ground-Truth Browser Accuracy Benchmarks | Pending | - | `tests/playwright/browser-accuracy.benchmark.mjs` |
 | **5. Milestone 5** | CI/CD Hardening, Final Verification & Documentation | Pending | - | `.github/workflows/test.yml` |

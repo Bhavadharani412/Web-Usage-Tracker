@@ -97,8 +97,13 @@ chrome.idle.onStateChanged.addListener((newState) => {
 
 // ─── Alarm Events ──────────────────────────────────────────
 
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
   aggregation.onAlarm(alarm);
+  try {
+    await tabManager.reconcileTabs();
+  } catch (err) {
+    console.warn('[WebTrack] Periodic tab reconciliation error:', err);
+  }
 });
 
 // ─── Message Handler (popup/dashboard communication) ───────
@@ -326,6 +331,11 @@ async function handleMessage(message) {
     case 'CLEAR_DIAGNOSTICS': {
       await diagnostics.clearDiagnostics();
       return { success: true };
+    }
+
+    case 'RECONCILE_TABS': {
+      const result = await tabManager.reconcileTabs();
+      return { success: true, data: result };
     }
 
     default:

@@ -446,3 +446,84 @@ export function getActiveTabInstance() {
 export function isActiveTab(tabId) {
   return activeTabId === tabId;
 }
+
+/**
+ * Reconcile in-memory tab state and persisted inactivity with actual live browser tabs.
+ * Conservative failure handling: if chrome.tabs.query fails or errors, state is preserved.
+ *
+ * @returns {Promise<{ reconciled: number, liveCount: number, staleMemoryRemoved: number, stalePersistedRemoved: number }>}
+ */
+export async function reconcileTabs() {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.query) {
+    return { reconciled: 0, liveCount: tabs.size, staleMemoryRemoved: 0, stalePersistedRemoved: 0 };
+  }
+
+  try {
+    const existingTabs = await chrome.tabs.query({});
+    if (!Array.isArray(existingTabs)) {
+      return { reconciled: 0, liveCount: tabs.size, staleMemoryRemoved: 0, stalePersistedRemoved: 0 };
+    }
+
+    const liveTabIds = new Set(
+      existingTabs
+        .filter(tab => tab && tab.id !== undefined)
+        .map(tab => tab.id)
+    );
+
+    // 1. Identify and remove stale in-memory tabs
+    const staleMemoryIds = [];
+    for (const tabId of tabs.keys()) {
+      if (!liveTabIds.has(tabId)) {
+        staleMemoryIds.push(tabId);
+      }
+    }
+    for (const tabId of staleMemoryIds) {
+      tabs.delete(tabId);
+    }
+
+    // 2. Identify and clear stale persisted inactivity records
+    const savedInactivity = await getTabInactivity();
+    const stalePersistedIds = Object.keys(savedInactivity)
+      .map(Number)
+      .filter(tabId => !liveTabIds.has(tabId));
+
+    if (stalePersistedIds.length > 0) {
+      await clearTabsInactive(stalePersistedIds);
+    }
+
+    // 3. Check if activeTabId is no longer live
+    if (activeTabId !== null && !liveTabIds.has(activeTabId)) {
+      activeTabId = null;
+      if (tracker.getStatus().state !== 'INACTIVE') {
+        await tracker.endSession();
+      }
+    }
+
+    return {
+      reconciled: liveTabIds.size,
+      liveCount: liveTabIds.size,
+      staleMemoryRemoved: staleMemoryIds.length,
+      stalePersistedRemoved: stalePersistedIds.length
+    };
+  } catch (error) {
+    console.error('[WebTrack] Tab reconciliation failed conservatively:', error);
+    return {
+      reconciled: 0,
+      liveCount: tabs.size,
+      staleMemoryRemoved: 0,
+      stalePersistedRemoved: 0,
+      error: error?.message
+    };
+  }
+}
+
+/**
+ * Reset tab manager state (for isolated unit tests).
+ */
+export function _clearTabsForTest() {
+  tabs.clear();
+  activeTabId = null;
+  focusedWindowId = null;
+  isBrowserFocused = true;
+  isUserIdle = false;
+}

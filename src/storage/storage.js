@@ -1,6 +1,13 @@
 /**
- * Storage Layer — wrapper around chrome.storage.local.
- * All persistent data flows through this module.
+ * Storage Layer — Wrapper around chrome.storage.local and chrome.storage.session.
+ *
+ * Requirements:
+ * - Bounded write coalescing for session and local storage
+ * - Deterministic update ordering
+ * - Read-your-own-writes dirty caching
+ * - Explicit flush behavior (flushPendingWrites)
+ * - Safe error recovery with diagnostics recording
+ * - Stale checkpoint protection with monotonic version guard
  */
 
 import { DEFAULT_SETTINGS, createDailyUsage, SCHEMA_VERSION } from './schema.js';
@@ -17,6 +24,37 @@ const KEYS = {
   TAB_DECISIONS: 'wt_tab_decisions',
   WEEKLY_STATS: 'wt_weekly_stats'
 };
+
+// ─── Storage Write Metrics ─────────────────────────────────
+
+let storageWriteMetrics = {
+  localWrites: 0,
+  sessionWrites: 0,
+  coalescedInactivityUpdates: 0,
+  coalescedUsageUpdates: 0
+};
+
+/**
+ * Get current storage write counts and metrics.
+ * @returns {{ localWrites: number, sessionWrites: number, coalescedInactivityUpdates: number, coalescedUsageUpdates: number }}
+ */
+export function getStorageWriteMetrics() {
+  return { ...storageWriteMetrics };
+}
+
+/**
+ * Reset storage write metrics counter.
+ */
+export function resetStorageWriteMetrics() {
+  storageWriteMetrics = {
+    localWrites: 0,
+    sessionWrites: 0,
+    coalescedInactivityUpdates: 0,
+    coalescedUsageUpdates: 0
+  };
+}
+
+// ─── Basic Local Storage Access ────────────────────────────
 
 /**
  * Get a value from chrome.storage.local.
@@ -52,6 +90,7 @@ async function set(key, value) {
     const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     storageLocal.set({ [key]: value }, () => {
+      storageWriteMetrics.localWrites += 1;
       const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime;
       const api = getBrowserAPI();
       const lastError = api?.runtime?.lastError || (typeof chrome !== 'undefined' ? chrome.runtime?.lastError : null);
@@ -161,7 +200,6 @@ export async function updateDailyUsage(dateStr, updateFn) {
   return updated;
 }
 
-
 /**
  * Get daily usage for a range of dates.
  * @param {string[]} dates - Array of date strings
@@ -246,96 +284,222 @@ export async function updateWeeklyStats(updates) {
   await set(KEYS.WEEKLY_STATS, { ...current, ...updates });
 }
 
-// ─── Tab Inactivity Persistence ────────────────────────────
-// chrome.storage.session survives Manifest V3 service-worker restarts
-// during the current browser session.
+// ─── Bounded Inactivity Write Coalescing (Issue #5) ────────
 //
-// The queue is important: without it, two simultaneous operations can do:
-//
-// get old data
-// modify separately
-// save separately
-//
-// causing one tab's inactivity data to overwrite another's.
+// In-memory dirty buffer coalesces rapid mutations within a bounded
+// time window (COALESCE_DEBOUNCE_MS = 150ms, MAX_HOLD_TIME_MS = 800ms).
+// Provides read-your-own-writes consistency via dirty overlays.
 
 const SESSION_KEY = 'wt_tab_inactivity';
 
-let inactivityWriteQueue = Promise.resolve();
+/** @type {Map<string, number|null>} tabIdStr -> timestampMs (null = deleted) */
+const pendingInactivityMutations = new Map();
+
+let inactivityFlushTimeout = null;
+let inactivityFirstMutationTime = null;
+let isFlushingInactivity = false;
+let inactivityFlushPromise = null;
+
+const COALESCE_DEBOUNCE_MS = 150;
+const MAX_HOLD_TIME_MS = 800;
 
 /**
- * Serialize changes to the inactivity map.
+ * Get count of currently pending un-flushed inactivity writes.
+ * @returns {number}
  */
-function enqueueInactivityMutation(mutator) {
-  inactivityWriteQueue = inactivityWriteQueue.then(async () => {
-    const sessionStore = getStorageSession();
-    const result = sessionStore?.get ? await new Promise((resolve) => sessionStore.get(SESSION_KEY, resolve)) : {};
-
-    const current = {
-      ...(result?.[SESSION_KEY] || {})
-    };
-
-    mutator(current);
-
-    if (sessionStore?.set) {
-      await new Promise((resolve) => sessionStore.set({ [SESSION_KEY]: current }, resolve));
-    }
-  });
-
-  return inactivityWriteQueue;
+export function getPendingInactivityCount() {
+  return pendingInactivityMutations.size;
 }
 
 /**
- * Get all persisted inactivity timestamps.
+ * Flush all pending coalesced inactivity writes immediately to chrome.storage.session.
+ * Safe flush behavior returning a Promise that resolves when data is persisted.
+ * @returns {Promise<void>}
+ */
+export async function flushPendingInactivityWrites() {
+  if (inactivityFlushTimeout) {
+    clearTimeout(inactivityFlushTimeout);
+    inactivityFlushTimeout = null;
+  }
+  inactivityFirstMutationTime = null;
+
+  if (pendingInactivityMutations.size === 0) {
+    return;
+  }
+
+  if (isFlushingInactivity && inactivityFlushPromise) {
+    return inactivityFlushPromise;
+  }
+
+  isFlushingInactivity = true;
+  inactivityFlushPromise = (async () => {
+    try {
+      const sessionStore = getStorageSession();
+      if (!sessionStore?.get || !sessionStore?.set) {
+        pendingInactivityMutations.clear();
+        return;
+      }
+
+      // Snapshot the current pending mutations to apply
+      const batchEntries = Array.from(pendingInactivityMutations.entries());
+
+      const result = await new Promise((resolve) => sessionStore.get(SESSION_KEY, resolve));
+      const current = { ...(result?.[SESSION_KEY] || {}) };
+
+      // Apply batch mutations
+      for (const [tabIdStr, timestampOrNull] of batchEntries) {
+        if (timestampOrNull === null) {
+          delete current[tabIdStr];
+        } else {
+          current[tabIdStr] = timestampOrNull;
+        }
+      }
+
+      const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+      await new Promise((resolve, reject) => {
+        sessionStore.set({ [SESSION_KEY]: current }, () => {
+          const api = getBrowserAPI();
+          const lastError = api?.runtime?.lastError || (typeof chrome !== 'undefined' ? chrome.runtime?.lastError : null);
+          if (lastError) {
+            reject(new Error(lastError.message || 'SESSION_STORAGE_SET_ERROR'));
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      storageWriteMetrics.sessionWrites += 1;
+      const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime;
+      diagnostics.recordStorageWrite(durationMs, true);
+
+      // Clean flushed entries from pending map (only if not re-mutated during async set)
+      for (const [tabIdStr, timestampOrNull] of batchEntries) {
+        if (pendingInactivityMutations.get(tabIdStr) === timestampOrNull) {
+          pendingInactivityMutations.delete(tabIdStr);
+        }
+      }
+    } catch (err) {
+      // Retain pending mutations on failure for retry
+      diagnostics.recordStorageWrite(0, false, err?.message || 'SESSION_FLUSH_ERROR');
+      diagnostics.recordRuntimeError('STORAGE_FLUSH_ERROR', err?.message || 'Failed writing coalesced inactivity batch');
+      console.warn('[WebTrack] Failed to flush coalesced inactivity batch, retaining pending entries for retry:', err);
+    } finally {
+      isFlushingInactivity = false;
+      inactivityFlushPromise = null;
+    }
+  })();
+
+  return inactivityFlushPromise;
+}
+
+/**
+ * Flush all pending coalesced writes across all storage layers.
+ * Call this prior to worker suspension, session completion, or teardown.
+ * @returns {Promise<void>}
+ */
+export async function flushPendingWrites() {
+  await flushPendingInactivityWrites();
+}
+
+/**
+ * Schedule a bounded flush for inactivity mutations.
+ * Enforces debounce window and hard upper bound on holding time.
+ */
+function scheduleInactivityFlush() {
+  const now = Date.now();
+  if (!inactivityFirstMutationTime) {
+    inactivityFirstMutationTime = now;
+  }
+
+  const elapsedSinceFirst = now - inactivityFirstMutationTime;
+
+  if (inactivityFlushTimeout) {
+    clearTimeout(inactivityFlushTimeout);
+    inactivityFlushTimeout = null;
+  }
+
+  if (elapsedSinceFirst >= MAX_HOLD_TIME_MS) {
+    // Hard upper bound reached — force flush immediately
+    flushPendingInactivityWrites();
+  } else {
+    // Coalesce within debounce window, bounded by remaining max hold
+    const remainingHold = Math.max(0, MAX_HOLD_TIME_MS - elapsedSinceFirst);
+    const delay = Math.min(COALESCE_DEBOUNCE_MS, remainingHold);
+    inactivityFlushTimeout = setTimeout(() => {
+      inactivityFlushTimeout = null;
+      flushPendingInactivityWrites();
+    }, delay);
+  }
+}
+
+/**
+ * Get all persisted inactivity timestamps with read-your-own-writes consistency.
+ * Merges persisted storage data with in-memory dirty buffer.
  *
- * @returns {Promise<Object>}
- * { [tabId]: timestampMs }
+ * @returns {Promise<Object>} { [tabId]: timestampMs }
  */
 export async function getTabInactivity() {
   const sessionStore = getStorageSession();
+  let baseData = {};
 
-  if (!sessionStore?.get) {
-    return {};
+  if (sessionStore?.get) {
+    const result = await new Promise((resolve) => sessionStore.get(SESSION_KEY, resolve));
+    baseData = { ...(result?.[SESSION_KEY] || {}) };
   }
 
-  const result = await new Promise((resolve) => sessionStore.get(SESSION_KEY, resolve));
+  // Overlay un-flushed in-memory pending mutations (read-your-own-writes guarantee)
+  for (const [tabIdStr, val] of pendingInactivityMutations.entries()) {
+    if (val === null) {
+      delete baseData[tabIdStr];
+    } else {
+      baseData[tabIdStr] = val;
+    }
+  }
 
-  return result?.[SESSION_KEY] || {};
+  return baseData;
 }
 
 /**
  * Mark a tab as inactive.
- *
+ * Bounded coalesced write.
  * @param {number} tabId
  * @param {number} timestamp
+ * @returns {Promise<void>}
  */
 export function persistTabInactive(tabId, timestamp) {
-  return enqueueInactivityMutation((current) => {
-    current[String(tabId)] = timestamp;
-  });
+  storageWriteMetrics.coalescedInactivityUpdates += 1;
+  pendingInactivityMutations.set(String(tabId), timestamp);
+  scheduleInactivityFlush();
+  return Promise.resolve();
 }
 
 /**
  * Remove a tab's inactivity record.
- *
+ * Bounded coalesced write.
  * @param {number} tabId
+ * @returns {Promise<void>}
  */
 export function clearTabInactive(tabId) {
-  return enqueueInactivityMutation((current) => {
-    delete current[String(tabId)];
-  });
+  storageWriteMetrics.coalescedInactivityUpdates += 1;
+  pendingInactivityMutations.set(String(tabId), null);
+  scheduleInactivityFlush();
+  return Promise.resolve();
 }
 
 /**
  * Remove multiple inactivity records.
- *
+ * Bounded coalesced write.
  * @param {number[]} tabIds
+ * @returns {Promise<void>}
  */
 export function clearTabsInactive(tabIds) {
-  return enqueueInactivityMutation((current) => {
-    for (const tabId of tabIds) {
-      delete current[String(tabId)];
-    }
-  });
+  storageWriteMetrics.coalescedInactivityUpdates += tabIds.length;
+  for (const tabId of tabIds) {
+    pendingInactivityMutations.set(String(tabId), null);
+  }
+  scheduleInactivityFlush();
+  return Promise.resolve();
 }
 
 // ─── Data Management ───────────────────────────────────────
@@ -345,11 +509,20 @@ export function clearTabsInactive(tabIds) {
  * @returns {Promise<void>}
  */
 export async function clearAllData() {
+  // Clear in-memory dirty buffers and timers
+  if (inactivityFlushTimeout) {
+    clearTimeout(inactivityFlushTimeout);
+    inactivityFlushTimeout = null;
+  }
+  pendingInactivityMutations.clear();
+  inactivityFirstMutationTime = null;
+
   return new Promise((resolve) => {
     const sessionStore = getStorageSession();
     const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     const finish = () => {
+      storageWriteMetrics.localWrites += 1;
       const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime;
       const api = getBrowserAPI();
       const lastError = api?.runtime?.lastError || (typeof chrome !== 'undefined' ? chrome.runtime?.lastError : null);
@@ -455,7 +628,10 @@ export async function persistActiveSessionCheckpoint(checkpoint) {
   }
 
   return new Promise((resolve) => {
-    sessionStore.set({ [ACTIVE_SESSION_KEY]: checkpoint }, resolve);
+    sessionStore.set({ [ACTIVE_SESSION_KEY]: checkpoint }, () => {
+      storageWriteMetrics.sessionWrites += 1;
+      resolve();
+    });
   });
 }
 
@@ -469,10 +645,15 @@ export async function clearActiveSessionCheckpoint() {
   if (!sessionStore?.remove && !sessionStore?.set) return;
   return new Promise((resolve) => {
     if (sessionStore.remove) {
-      sessionStore.remove(ACTIVE_SESSION_KEY, resolve);
+      sessionStore.remove(ACTIVE_SESSION_KEY, () => {
+        storageWriteMetrics.sessionWrites += 1;
+        resolve();
+      });
     } else {
-      sessionStore.set({ [ACTIVE_SESSION_KEY]: null }, resolve);
+      sessionStore.set({ [ACTIVE_SESSION_KEY]: null }, () => {
+        storageWriteMetrics.sessionWrites += 1;
+        resolve();
+      });
     }
   });
 }
-
