@@ -10,7 +10,8 @@ import { classify } from '../clustering/classifier.js';
 import { createTabInstance } from '../storage/schema.js';
 import { isInternalUrl, isNewTabUrl } from '../clustering/domain-normalizer.js';
 import tracker from './tracker.js';
-import { getSettings, getTabInactivity, persistTabInactive, clearTabInactive, clearTabsInactive } from '../storage/storage.js';
+import { getSettings, getTabInactivity, persistTabInactive, clearTabInactive, clearTabsInactive, getTabDecisions } from '../storage/storage.js';
+import { rankCleanupCandidates } from '../cleanup/suggestions.js';
 
 /**
  * In-memory map of tracked tabs.
@@ -392,33 +393,31 @@ export function getAllTrackedTabs() {
 }
 
 /**
- * Get inactive tabs that exceed the threshold.
+ * Get inactive tabs that exceed the threshold, ranked and filtered by decision weighting.
+ * Complexity: O(T + D) with batched decisions query.
  * @param {number} thresholdMinutes
- * @returns {Object[]}
+ * @returns {Promise<Object[]>}
  */
 export async function getInactiveTabs(thresholdMinutes) {
   const now = Date.now();
   const thresholdMs = thresholdMinutes * 60 * 1000;
   const settings = await getSettings();
+  const decisions = await getTabDecisions();
 
-  return getAllTrackedTabs().filter(tab => {
+  const rawInactive = getAllTrackedTabs().filter(tab => {
     // Must be inactive
     if (!tab.inactiveSince) return false;
 
     // Must exceed threshold
     if ((now - tab.inactiveSince) < thresholdMs) return false;
 
-    // Filter protected tabs
-    if (settings.ignorePinnedTabs && tab.isPinned) return false;
-    if (settings.ignoreAudibleTabs && tab.isAudible) return false;
-    if (settings.protectedDomains.includes(tab.domain)) return false;
-    if (settings.protectedDomains.includes(tab.hostname)) return false;
-
-    // Skip internal pages
+    // Skip internal browser pages
     if (isInternalUrl(tab.url) || isNewTabUrl(tab.url)) return false;
 
     return true;
-  }).sort((a, b) => a.inactiveSince - b.inactiveSince);  // Longest inactive first
+  });
+
+  return rankCleanupCandidates(rawInactive, decisions, settings);
 }
 
 /**
