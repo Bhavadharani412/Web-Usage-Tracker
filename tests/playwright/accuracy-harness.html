@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WebTrack Browser Accuracy Benchmark Harness</title>
+</head>
+<body>
+  <h1>WebTrack Browser Accuracy Harness</h1>
+  <div id="status">Loading modules...</div>
+
+  <script type="module">
+    import tracker, { TrackingState } from '/src/background/tracker.js';
+    import * as tabManager from '/src/background/tab-manager.js';
+    import * as storage from '/src/storage/storage.js';
+
+    window.__webtrack = {
+      tracker,
+      TrackingState,
+      tabManager,
+      storage
+    };
+
+    document.getElementById('status').textContent = 'Ready';
+    window.__harnessReady = true;
+  </script>
+</body>
+</html>
