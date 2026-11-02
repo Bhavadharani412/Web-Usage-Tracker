@@ -400,6 +400,22 @@ export async function getStorageUsage() {
 // ─── Active Session Checkpointing ─────────────────────────
 
 const ACTIVE_SESSION_KEY = 'wt_active_session';
+let lastAcknowledgedCheckpointVersion = 0;
+
+/**
+ * Get current acknowledged checkpoint version (for tests).
+ * @returns {number}
+ */
+export function getLastAcknowledgedCheckpointVersion() {
+  return lastAcknowledgedCheckpointVersion;
+}
+
+/**
+ * Reset checkpoint version guard (for tests).
+ */
+export function resetCheckpointVersionGuard() {
+  lastAcknowledgedCheckpointVersion = 0;
+}
 
 /**
  * Get checkpointed active session state from session storage.
@@ -417,12 +433,27 @@ export async function getActiveSessionCheckpoint() {
 
 /**
  * Persist active session checkpoint to session storage.
- * @param {Object} checkpoint - { state, currentSession, pausedAt }
+ * Enforces monotonic version check to reject stale checkpoint overwrites.
+ * @param {Object} checkpoint - { version, state, currentSession, pausedAt, timestamp }
  * @returns {Promise<void>}
  */
 export async function persistActiveSessionCheckpoint(checkpoint) {
   const sessionStore = getStorageSession();
   if (!sessionStore?.set) return;
+
+  if (checkpoint && typeof checkpoint.version === 'number') {
+    if (checkpoint.version < lastAcknowledgedCheckpointVersion) {
+      diagnostics.recordEvent({
+        type: 'stale_checkpoint_rejected',
+        outcome: 'warning',
+        durationMs: 0,
+        details: `Rejected stale checkpoint version ${checkpoint.version} (last acknowledged: ${lastAcknowledgedCheckpointVersion})`
+      });
+      return;
+    }
+    lastAcknowledgedCheckpointVersion = checkpoint.version;
+  }
+
   return new Promise((resolve) => {
     sessionStore.set({ [ACTIVE_SESSION_KEY]: checkpoint }, resolve);
   });
@@ -434,6 +465,7 @@ export async function persistActiveSessionCheckpoint(checkpoint) {
  */
 export async function clearActiveSessionCheckpoint() {
   const sessionStore = getStorageSession();
+  lastAcknowledgedCheckpointVersion = 0;
   if (!sessionStore?.remove && !sessionStore?.set) return;
   return new Promise((resolve) => {
     if (sessionStore.remove) {
