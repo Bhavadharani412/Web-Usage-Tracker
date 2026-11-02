@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.jpg" width="76" height="76" alt="Web-Usage-Tracker Logo" />
+  <img src="assets/banner.jpg" width="100%" alt="Web-Usage-Tracker Logo" />
 </p>
 
 <h1 align="center">Web-Usage-Tracker (WebTrack)</h1>
