@@ -1,13 +1,20 @@
-name: WebTrack Test Suite
+name: WebTrack CI Test Suite
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'feature/**' ]
   pull_request:
     branches: [ main, master ]
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    name: Unit, Concurrency & Storage Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
 
     strategy:
@@ -15,12 +22,103 @@ jobs:
         node-version: [18.x, 20.x, 22.x]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
-      - name: Run Test Suite & Benchmarks
-        run: node --test tests/aggregation.test.mjs tests/benchmarks.test.mjs tests/browser-compat.test.mjs tests/classifier.test.mjs tests/tracker.test.mjs tests/week-math.test.mjs
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Unit, Concurrency, Storage & Cleanup Tests
+        run: npm test
+
+  coverage:
+    name: Test Coverage & Quality Gates (Node 22)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Execute Coverage Analysis
+        run: npm run test:coverage | tee coverage-report.txt
+
+      - name: Upload Coverage Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-node22
+          path: coverage-report.txt
+          retention-days: 14
+
+  e2e:
+    name: Playwright UI Critical Path Tests
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright Dashboard UI Tests
+        run: node --test tests/playwright/dashboard-diagnostics.test.mjs
+
+  accuracy-benchmark:
+    name: Ground-Truth Browser Accuracy Benchmark (Scheduled / Manual)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Ground-Truth Accuracy Benchmark
+        run: npm run test:accuracy | tee accuracy-benchmark.log
+
+      - name: Upload Benchmark Log Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accuracy-benchmark-log
+          path: accuracy-benchmark.log
+          retention-days: 30

@@ -14,12 +14,14 @@ export const DEFAULT_SETTINGS = {
   trackingEnabled: true,
   idleThresholdSeconds: 120,        // 2 minutes — pause tracking after this
 
-  // Tab cleanup
+  // Tab cleanup & decision weighting (Issue #8)
   cleanupEnabled: true,
   cleanupThresholdMinutes: 10,      // Suggest cleanup after 10 min inactive
   ignorePinnedTabs: true,
   ignoreProtectedTabs: true,
   ignoreAudibleTabs: true,
+  minDecisionSample: 5,             // Min user actions before weighting
+  keepRatioThreshold: 0.80,         // 80% keep ratio triggers suppression
 
   // Protected domains — never suggest closing these
   protectedDomains: [
